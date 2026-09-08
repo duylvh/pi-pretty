@@ -3,7 +3,15 @@
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { BG_ERROR, FG_DIM, RST, resolveBaseBackground, TOOL_RESULT_INDENT } from "../config.js";
 import { shortPath } from "../helpers.js";
-import { fillToolBackground, fillToolBody, renderToolError, renderToolMetrics, renderTree } from "../render.js";
+import {
+	fillToolBackground,
+	fillToolBody,
+	rememberToolTitle,
+	renderToolError,
+	renderToolMetrics,
+	renderTree,
+	setCollapsedToolTitle,
+} from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { LsDetails, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { wrapExecuteWithMetrics } from "./metrics.js";
@@ -51,7 +59,10 @@ export function registerLsTool(
 			let out = theme.fg("toolTitle", theme.bold("ls"));
 			if (path) out += ` ${theme.fg("accent", path)}`;
 			if (limit !== undefined && limit !== null) out += theme.fg("toolOutput", ` (limit ${limit})`);
-			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}\n`, ctx.isError ? BG_ERROR : undefined));
+			const renderTitle = (suffix = ""): string =>
+				fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}${suffix}\n`, ctx.isError ? BG_ERROR : undefined);
+			rememberToolTitle(ctx, text, renderTitle);
+			text.setText(renderTitle());
 			return text;
 		},
 
@@ -66,11 +77,9 @@ export function registerLsTool(
 			const d = result.details as LsDetails | undefined;
 			if (d?._type === "lsResult" && d.text) {
 				if (!ctx.expanded) {
-					text.setText(
-						fillToolBody(
-							`${TOOL_RESULT_INDENT}${FG_DIM}${d.entryCount} entries — ctrl+o to expand${RST}${renderToolMetrics(result)}`,
-						),
-					);
+					const summary = `${FG_DIM}${d.entryCount} entries — ctrl+o to expand${RST}${renderToolMetrics(result)}`;
+					if (setCollapsedToolTitle(ctx, text, ` ${summary}`)) return text;
+					text.setText(fillToolBody(`${TOOL_RESULT_INDENT}${summary}`));
 					return text;
 				}
 				const rendered = renderTree(d.text, d.path)

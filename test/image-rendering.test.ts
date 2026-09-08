@@ -76,6 +76,17 @@ describe("read image presentation ownership", () => {
 		expect(output).not.toContain("\x1b]1337;File=");
 	});
 
+	it("keeps a top padding row before the image fallback note", async () => {
+		const note = "Read image file [image/png]";
+		const { rendered } = await executeAndRender([
+			{ type: "text", text: note },
+			{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+		]);
+		const visible = rendered.getText().replace(/\x1b\[[0-9;]*m/g, "");
+		expect(visible.split("\n")[0]).toBe("");
+		expect(visible).toContain(note);
+	});
+
 	it("is invariant before host rendering when the exact Herdr marker is present", async () => {
 		const image: ToolContent[] = [{ type: "image", data: "same", mimeType: "image/png" }];
 		delete process.env.HERDR_KITTY_GRAPHICS;

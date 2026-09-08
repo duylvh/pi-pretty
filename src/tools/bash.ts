@@ -10,7 +10,14 @@ import {
 	inferBashExitCode,
 	stripBashExitStatusLine,
 } from "../helpers.js";
-import { fillToolBackground, fillToolBody, renderToolDuration, renderToolError } from "../render.js";
+import {
+	fillToolBackground,
+	fillToolBody,
+	rememberToolTitle,
+	renderToolDuration,
+	renderToolError,
+	setCollapsedToolTitle,
+} from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { BashDetails, ComponentLike, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { type RejectedExecutionMetrics, wrapExecuteWithMetrics } from "./metrics.js";
@@ -18,6 +25,7 @@ import { type RejectedExecutionMetrics, wrapExecuteWithMetrics } from "./metrics
 type Result = AgentToolResult<Record<string, unknown>>;
 
 const BASH_REJECTED_METRICS_KEY = "__piPrettyBashRejectedMetrics";
+const BASH_RESULT_RENDER_KEY = "__piPrettyBashResultRender";
 const REJECTED_METRICS_TTL_MS = 60_000;
 const rejectedBashMetrics = new Map<string, RejectedExecutionMetrics>();
 
@@ -30,7 +38,7 @@ function rememberRejectedBashMetrics(toolCallId: string, metrics: RejectedExecut
 }
 
 function takeRejectedBashMetrics(ctx: RenderCtxLike): RejectedExecutionMetrics | undefined {
-	const state = ctx.state as Record<string, unknown>;
+	const state = ctx.state;
 	const cached = state[BASH_REJECTED_METRICS_KEY] as RejectedExecutionMetrics | undefined;
 	if (cached) return cached;
 	if (!ctx.toolCallId) return undefined;
@@ -49,6 +57,14 @@ function addRejectedMetrics(result: Result, metrics: RejectedExecutionMetrics): 
 		[CHARS_KEY]: metrics.chars,
 	};
 	return { ...result, details } as Result;
+}
+
+function restoreBashResultRender(ctx: RenderCtxLike, text: ComponentLike): void {
+	const state = ctx.state;
+	const original = state[BASH_RESULT_RENDER_KEY] as ((width: number) => string[]) | undefined;
+	if (!original) return;
+	(text as unknown as { render: (width: number) => string[] }).render = original;
+	delete state[BASH_RESULT_RENDER_KEY];
 }
 
 export function registerBashTool(
@@ -95,9 +111,14 @@ export function registerBashTool(
 						? `${rawCmd.slice(0, Math.max(1, headerBudget))}…`
 						: rawCmd;
 			const commandLabel = theme.fg(ctx.isError ? "error" : "toolTitle", theme.bold(`$ ${cmd}`));
-			text.setText(
-				fillToolBackground(`\n${TOOL_RESULT_INDENT}${commandLabel}${t}\n`, undefined, ctx.expanded ? undefined : tw),
-			);
+			const renderTitle = (suffix = ""): string =>
+				fillToolBackground(
+					`\n${TOOL_RESULT_INDENT}${commandLabel}${t}${suffix}\n`,
+					undefined,
+					ctx.expanded ? undefined : tw,
+				);
+			rememberToolTitle(ctx, text, renderTitle);
+			text.setText(renderTitle());
 			return text;
 		},
 
@@ -105,6 +126,7 @@ export function registerBashTool(
 			resolveBaseBackground(theme);
 
 			const text = ctx.lastComponent ?? new TC("", 0, 0);
+			restoreBashResultRender(ctx, text as ComponentLike);
 			const rejectedMetrics = takeRejectedBashMetrics(ctx);
 			const displayResult = rejectedMetrics ? addRejectedMetrics(result, rejectedMetrics) : result;
 
@@ -139,6 +161,8 @@ export function registerBashTool(
 				const header = `${TOOL_RESULT_INDENT}${info}`;
 				const rw = termWidth();
 
+				if (setCollapsedToolTitle(ctx, text, ` ${info}`)) return text;
+
 				const renderFn = (w: number) => {
 					if (!ctx.expanded) return fillToolBody(header, undefined, w);
 					if (!output.trim()) return fillToolBody(header, undefined, w);
@@ -151,6 +175,7 @@ export function registerBashTool(
 				const baseRender =
 					typeof (text as ComponentLike).render === "function" ? (text as ComponentLike).render.bind(text) : null;
 				if (baseRender) {
+					ctx.state[BASH_RESULT_RENDER_KEY] = baseRender;
 					let key: string | undefined;
 					(text as unknown as Record<string, unknown>).render = (w: number) => {
 						const width = Math.max(1, Math.floor(w || termWidth()));

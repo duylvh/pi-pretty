@@ -116,14 +116,14 @@ describe("thinking timer lifecycle wiring", () => {
 		const start = Date.now();
 
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 0s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 0ms");
 
 		vi.setSystemTime(start + 12_500);
 		vi.advanceTimersByTime(33);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 12s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 12s");
 
 		await events.get("message_update")!({ message: textAfterThinking }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 12s");
+		expect(labels.at(-1)).toBe(" Thought for 12s");
 
 		const count = labels.length;
 		vi.setSystemTime(start + 60_000);
@@ -139,13 +139,13 @@ describe("thinking timer lifecycle wiring", () => {
 		const ctx = await loadExtension();
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
 		await events.get("message_update")!({ message: textAfterThinking }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 0s");
+		expect(labels.at(-1)).toBe(" Thought for 0ms");
 
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 0s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 0ms");
 		vi.advanceTimersByTime(33);
 		const afterTick = stripAnsi(labels.at(-1) ?? "");
-		expect(afterTick).toMatch(/^Thinking\.\.\. 0s$/); // fresh timer, not the old phase
+		expect(afterTick).toMatch(/^ Thinking\.\.\. 33ms$/); // fresh timer, not the old phase
 	});
 
 	it("resumes the accumulated total when the same message thinks again", async () => {
@@ -160,16 +160,16 @@ describe("thinking timer lifecycle wiring", () => {
 		await events.get("message_update")!({ message: msg }, ctx);
 		vi.setSystemTime(start + 7_000);
 		await events.get("message_update")!({ message: withText }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 7s");
+		expect(labels.at(-1)).toBe(" Thought for 7s");
 
 		// Interleaved run in the SAME message (thinking again after text) resumes 7s.
 		const thinkingAgain = { ...withText, content: [...withText.content, { type: "thinking", thinking: "b" }] };
 		vi.setSystemTime(start + 9_000);
 		await events.get("message_update")!({ message: thinkingAgain }, ctx);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 7s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 7s");
 		vi.setSystemTime(start + 12_500);
 		vi.advanceTimersByTime(33);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 10s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 10s");
 	});
 
 	it("restores the default label when thinking is revealed mid-phase while ticking", async () => {
@@ -191,11 +191,11 @@ describe("thinking timer lifecycle wiring", () => {
 		const ctx = await loadExtension();
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
 		await events.get("message_update")!({ message: textAfterThinking }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 0s");
+		expect(labels.at(-1)).toBe(" Thought for 0ms");
 
 		// Non-assistant messages must not touch the frozen label
 		await events.get("message_end")!({ message: { role: "toolResult", content: [] } }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 0s");
+		expect(labels.at(-1)).toBe(" Thought for 0ms");
 
 		// The assistant message ending restores pi's default immediately — the
 		// global label must not stamp this duration onto every older thinking row
@@ -204,14 +204,14 @@ describe("thinking timer lifecycle wiring", () => {
 
 		// A later phase in the same run starts a fresh timer
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 0s");
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 0ms");
 	});
 
 	it("restores the default label when thinking is revealed mid-run after completion", async () => {
 		const ctx = await loadExtension();
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
 		await events.get("message_update")!({ message: textAfterThinking }, ctx);
-		expect(labels.at(-1)).toBe("Thought for 0s");
+		expect(labels.at(-1)).toBe(" Thought for 0ms");
 
 		writeSettings(false);
 		vi.setSystemTime(Date.now() + 600);
@@ -261,13 +261,13 @@ describe("thinking timer lifecycle wiring", () => {
 			{ message: { ...msg, content: [...msg.content, { type: "text", text: "answer" }] } },
 			ctx,
 		);
-		expect(labels.at(-1)).toMatch(/^Thought for 0s$/);
+		expect(labels.at(-1)).toMatch(/^ Thought for 0ms$/);
 
 		const internals = (component: unknown) => component as { hiddenThinkingLabel?: string };
 		const completedRow = new host.AssistantMessageComponent(undefined, true);
 		(completedRow as unknown as { lastMessage: unknown }).lastMessage = msg;
 		completedRow.setHiddenThinkingLabel("frameX");
-		expect(internals(completedRow).hiddenThinkingLabel).toBe("Thought for 0s");
+		expect(internals(completedRow).hiddenThinkingLabel).toBe(" Thought for 0ms");
 
 		// The active row keeps animating frames on the real class too: restart a
 		// phase for a new message and check the incoming frame lands untouched.
@@ -279,7 +279,7 @@ describe("thinking timer lifecycle wiring", () => {
 		expect(internals(activeRow).hiddenThinkingLabel).toBe("shimmer-frame");
 		// Completed rows stay frozen while the new phase animates.
 		completedRow.setHiddenThinkingLabel("shimmer-frame");
-		expect(internals(completedRow).hiddenThinkingLabel).toBe("Thought for 0s");
+		expect(internals(completedRow).hiddenThinkingLabel).toBe(" Thought for 0ms");
 
 		const unknownRow = new host.AssistantMessageComponent(undefined, true);
 		(unknownRow as unknown as { lastMessage: unknown }).lastMessage = {
@@ -288,7 +288,7 @@ describe("thinking timer lifecycle wiring", () => {
 			content: [{ type: "thinking", thinking: "old" }],
 		};
 		unknownRow.setHiddenThinkingLabel("frameX");
-		expect(internals(unknownRow).hiddenThinkingLabel).toBe("Thinking...");
+		expect(internals(unknownRow).hiddenThinkingLabel).toBe(" Thinking...");
 	});
 
 	it("restores on session shutdown mid-phase", async () => {

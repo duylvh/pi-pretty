@@ -740,11 +740,12 @@ describe("working row token stats", () => {
 });
 
 describe("thinking elapsed timer", () => {
-	it("formats whole-second durations compactly", async () => {
+	it("formats sub-second durations as milliseconds and longer durations compactly", async () => {
 		const module = (await freshModule("../src/working-indicator.js")) as Record<string, unknown>;
 		const formatThinkingDuration = module.formatThinkingDuration as (elapsedMs: number) => string;
-		expect(formatThinkingDuration(0)).toBe("0s");
-		expect(formatThinkingDuration(999)).toBe("0s");
+		expect(formatThinkingDuration(0)).toBe("0ms");
+		expect(formatThinkingDuration(999)).toBe("999ms");
+		expect(formatThinkingDuration(1_000)).toBe("1s");
 		expect(formatThinkingDuration(12_999)).toBe("12s");
 		expect(formatThinkingDuration(60_000)).toBe("1m 00s");
 		expect(formatThinkingDuration(3_723_999)).toBe("1h 02m 03s");
@@ -782,7 +783,7 @@ describe("thinking elapsed timer", () => {
 		timer.restore();
 		timer.tick();
 		timer.complete();
-		expect(events).toEqual(["tick:Thinking... 0s", "tick:Thinking... 12s", "show:Thought for 12s", "restore"]);
+		expect(events).toEqual(["tick: Thinking... 0ms", "tick: Thinking... 12s", "show: Thought for 12s", "restore"]);
 	});
 
 	it("resumes a later run in the same message from the accumulated elapsed time", async () => {
@@ -812,7 +813,7 @@ describe("thinking elapsed timer", () => {
 		now = 20_500;
 		run2.tick();
 		const done2 = run2.complete();
-		expect(labels.at(-1)).toBe("Thought for 13s"); // 5s + 8.5s
+		expect(labels.at(-1)).toBe(" Thought for 13s"); // 5s + 8.5s
 		expect(done2).toBe(13_500);
 	});
 });
@@ -835,12 +836,12 @@ describe("per-row hidden-thinking labels", () => {
 		rows[2].lastMessage = { timestamp: 3 };
 		const perRow = installPerRowThinkingLabels(FakeRow);
 		expect(perRow).toBeDefined();
-		perRow!.complete(2, 4_000);
+		perRow!.complete(2, 450);
 		perRow!.setActive(1);
 		for (const row of rows) row.setHiddenThinkingLabel("frameX");
 		expect(rows[0].label).toBe("frameX"); // streaming row keeps the animating frame
-		expect(rows[1].label).toBe("Thought for 4s"); // completed row keeps its own duration
-		expect(rows[2].label).toBe("Thinking..."); // unknown row gets the default
+		expect(rows[1].label).toBe(" Thought for 450ms"); // completed row keeps its own duration
+		expect(rows[2].label).toBe(" Thinking..."); // unknown row gets the default
 		perRow!.uninstall();
 	});
 
@@ -876,16 +877,16 @@ describe("per-row hidden-thinking labels", () => {
 		row1.setHiddenThinkingLabel("f1");
 		row2.setHiddenThinkingLabel("f1");
 		expect(row1.label).toBe("f1");
-		expect(row2.label).toBe("Thinking...");
+		expect(row2.label).toBe(" Thinking...");
 		perRow.complete(1, 3_000);
 		perRow.setActive(2);
 		row1.setHiddenThinkingLabel("f2");
 		row2.setHiddenThinkingLabel("f2");
-		expect(row1.label).toBe("Thought for 3s");
+		expect(row1.label).toBe(" Thought for 3s");
 		expect(row2.label).toBe("f2");
 		perRow.clearActive();
 		row2.setHiddenThinkingLabel("f3");
-		expect(row2.label).toBe("Thinking...");
+		expect(row2.label).toBe(" Thinking...");
 		perRow.uninstall();
 	});
 
@@ -901,7 +902,7 @@ describe("per-row hidden-thinking labels", () => {
 		const second = installPerRowThinkingLabels(FakeRow)!;
 		second.complete(1, 9_000);
 		row.setHiddenThinkingLabel("frameX");
-		expect(row.label).toBe("Thought for 9s");
+		expect(row.label).toBe(" Thought for 9s");
 		second.uninstall();
 		row.setHiddenThinkingLabel("plain");
 		expect(row.label).toBe("plain");
@@ -945,7 +946,7 @@ describe("createThinkingLabelAnimator", () => {
 		expect(labels).toHaveLength(11);
 		// Frames 0-3 are the identical all-low lead-in; the band arrives later.
 		expect(labels[0]).not.toBe(labels[10]);
-		for (const label of labels) expect(stripAnsi(label)).toBe("Thinking...");
+		for (const label of labels) expect(stripAnsi(label)).toBe(" Thinking...");
 		// Italic + thinkingText low tier; no spinner glyph on the label row.
 		expect(labels[0]).toContain(`\x1b[3m`);
 		expect(labels[0]).toContain(`${THEME_THINKING}Thinking`);
@@ -960,10 +961,10 @@ describe("createThinkingLabelAnimator", () => {
 		const { ui, labels } = makeUi();
 		const animator = createThinkingLabelAnimator(ui, WORKING_INDICATOR_DEFAULTS);
 		animator.tick("Thinking... 7s");
-		expect(stripAnsi(labels.at(-1) ?? "")).toBe("Thinking... 7s");
-		expect(animator.frames.every((frame) => stripAnsi(frame) === "Thinking... 7s")).toBe(true);
+		expect(stripAnsi(labels.at(-1) ?? "")).toBe(" Thinking... 7s");
+		expect(animator.frames.every((frame) => stripAnsi(frame) === " Thinking... 7s")).toBe(true);
 		animator.show("Thought for 7s");
-		expect(labels.at(-1)).toBe("Thought for 7s");
+		expect(labels.at(-1)).toBe(" Thought for 7s");
 	});
 
 	it("tints mid/high tiers with the session accent", async () => {

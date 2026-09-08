@@ -39,12 +39,7 @@ import {
 	formatElapsedMs,
 	normalizeLineEndings,
 } from "./helpers.js";
-import type { RenderCtxLike as RenderContext, ThemeLike } from "./types.js";
-
-/** Thin wrapper over pi-tui's truncateToWidth (imported at top level above). */
-function _truncateToWidth(text: string, maxWidth: number, ellipsis?: string, pad?: boolean): string {
-	return truncateToWidth(text, maxWidth, ellipsis, pad);
-}
+import type { RenderCtxLike as RenderContext, TextLike, ThemeLike } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Shiki ANSI cache
@@ -215,7 +210,7 @@ export function fillToolBackground(text: string, bg = BG_BASE, width?: number): 
 			}
 			const plainLead = line.replace(ANSI_CAPTURE_RE, "");
 			const skipPad = line.startsWith(TOOL_RESULT_INDENT) || plainLead.startsWith(TOOL_RESULT_INDENT);
-			const fitted = _truncateToWidth(line, width, "", !skipPad);
+			const fitted = truncateToWidth(line, width, "", !skipPad);
 			const stripped = preserveBoxBackground(fitted);
 			return bg ? bg + stripped : stripped;
 		})
@@ -225,6 +220,25 @@ export function fillToolBackground(text: string, bg = BG_BASE, width?: number): 
 /** Add exactly the missing terminal row after a rendered tool body. */
 export function fillToolBody(text: string, bg = BG_BASE, width?: number): string {
 	return fillToolBackground(text.endsWith("\n") ? text : `${text}\n`, bg, width);
+}
+
+const TOOL_TITLE_STATE_KEY = "__piPrettyToolTitle";
+type ToolTitleRenderer = (suffix?: string) => string;
+type ToolTitleState = { component: TextLike; render: ToolTitleRenderer };
+
+/** Keep a self-rendered tool's call title mutable while its result arrives. */
+export function rememberToolTitle(ctx: RenderContext, component: TextLike, render: ToolTitleRenderer): void {
+	ctx.state[TOOL_TITLE_STATE_KEY] = { component, render } satisfies ToolTitleState;
+}
+
+/** Move collapsed result metadata into the call title and hide the result slot. */
+export function setCollapsedToolTitle(ctx: RenderContext, result: TextLike, suffix: string): boolean {
+	if (ctx.expanded) return false;
+	const title = ctx.state[TOOL_TITLE_STATE_KEY] as ToolTitleState | undefined;
+	if (!title || typeof title.render !== "function") return false;
+	title.component.setText(title.render(suffix));
+	result.setText("");
+	return true;
 }
 
 function lnum(n: number, w: number): string {
@@ -282,7 +296,7 @@ export async function renderFileContent(
 
 	const out: string[] = [];
 	for (const line of hl) {
-		out.push(_truncateToWidth(line ?? "", Math.max(1, tw), `${FG_DIM}›`));
+		out.push(truncateToWidth(line ?? "", Math.max(1, tw), `${FG_DIM}›`));
 	}
 	return out.join("\n");
 }

@@ -498,7 +498,7 @@ export interface PerRowThinkingLabels {
 	/** Mark the message currently streaming a thinking block (its row animates). */
 	setActive(timestamp: number): void;
 	/** Freeze a message's completed thinking duration in ms (its row shows
-	 * `Thought for Xs` derived from this). */
+	 * `Thought for X` derived from this). */
 	complete(timestamp: number, durationMs: number): void;
 	/** Drop the active mark (run ended); completed rows keep their durations. */
 	clearActive(): void;
@@ -516,7 +516,7 @@ interface RowInternals {
  * Intercept the host's per-row label fan-out method
  * (`AssistantMessageComponent.prototype.setHiddenThinkingLabel`): each row
  * substitutes the incoming global label with its own — the streaming row
- * animates, completed rows stay frozen at their own `Thought for Xs`, unknown
+ * animates, completed rows stay frozen at their own `Thought for X`, unknown
  * rows fall back to pi's default. Any per-call failure passes the incoming
  * label through unchanged, so a host internals change degrades to pi-pretty's
  * global-label behavior instead of breaking. Durations live per session.
@@ -544,7 +544,7 @@ export function installPerRowThinkingLabels(componentClass: unknown): PerRowThin
 			if (typeof ts !== "number") return incoming;
 			if (ts === state.activeTs) return incoming;
 			const ms = state.completed.get(ts);
-			return ms === undefined ? THINKING_LABEL : `Thought for ${formatThinkingDuration(ms)}`;
+			return ms === undefined ? THINKING_LABEL : `${THOUGHT_LABEL} ${formatThinkingDuration(ms)}`;
 		} catch {
 			return incoming;
 		}
@@ -593,11 +593,15 @@ export interface ThinkingTimer {
 	restore(): void;
 }
 
-const THINKING_LABEL = "Thinking...";
+const THINKING_LABEL = " Thinking...";
+const THOUGHT_LABEL = " Thought for";
+const padThinkingLabel = (label: string): string => (label.startsWith(" ") ? label : ` ${label}`);
 
-/** Format elapsed milliseconds as whole seconds with compact padded units. */
+/** Format sub-second elapsed time as milliseconds, then use compact whole seconds. */
 export function formatThinkingDuration(elapsedMs: number): string {
-	const totalSeconds = Math.floor(elapsedMs / 1000);
+	const wholeMs = Math.max(0, Math.floor(elapsedMs));
+	if (wholeMs < 1000) return `${wholeMs}ms`;
+	const totalSeconds = Math.floor(wholeMs / 1000);
 	const seconds = totalSeconds % 60;
 	const totalMinutes = Math.floor(totalSeconds / 60);
 	const minutes = totalMinutes % 60;
@@ -633,7 +637,7 @@ export function createThinkingTimer(
 			if (terminal) return undefined;
 			terminal = true;
 			const ms = elapsed();
-			animator.show(`Thought for ${formatThinkingDuration(ms)}`);
+			animator.show(`${THOUGHT_LABEL} ${formatThinkingDuration(ms)}`);
 			return ms;
 		},
 		restore(): void {
@@ -660,8 +664,8 @@ export function thinkingBlockActive(message: unknown): boolean {
  * the working row. Pi renders the label as static italic `thinkingText` text;
  * the only extension lever is `setHiddenThinkingLabel(label)`, which rebuilds
  * chat children, so index.ts drives it at 30fps only while the streaming
- * message's last block is thinking. The elapsed label is rebuilt only when its
- * whole-second text changes; the shimmer frame still advances every tick.
+ * message's last block is thinking. The elapsed label is rebuilt when its
+ * displayed duration changes; the shimmer frame still advances every tick.
  *
  * Tiers: low = theme `thinkingText` (pi's own label look), mid/high = session
  * accent when enabled; every frame is italic like pi's label; no spinner.
@@ -690,14 +694,18 @@ export function createThinkingLabelAnimator(
 		const accent = hexToAnsiFg(sessionAccentHex(sessionName));
 		if (accent) ansi = { ...ansi, mid: accent, high: accent };
 	}
-	const buildLabelFrames = (label: string): string[] =>
-		buildWorkingFrames([label], {
+	const buildLabelFrames = (label: string): string[] => {
+		const padded = padThinkingLabel(label);
+		const text = padded.trimStart();
+		const leftPadding = padded.slice(0, padded.length - text.length);
+		return buildWorkingFrames([text], {
 			mode: workSettings.mode,
 			ansi,
 			bold: workSettings.bold,
 			spinner: false,
 			italic: true,
-		}).frames;
+		}).frames.map((frame) => `${leftPadding}${frame}`);
+	};
 
 	let currentLabel = THINKING_LABEL;
 	let frames = buildLabelFrames(currentLabel);
@@ -709,9 +717,10 @@ export function createThinkingLabelAnimator(
 			return frames;
 		},
 		tick(label = THINKING_LABEL): void {
-			if (label !== currentLabel) {
-				frames = buildLabelFrames(label);
-				currentLabel = label;
+			const paddedLabel = padThinkingLabel(label);
+			if (paddedLabel !== currentLabel) {
+				frames = buildLabelFrames(paddedLabel);
+				currentLabel = paddedLabel;
 			}
 			// A static frame changes only when its elapsed-time label changes.
 			if (appliedLabel === currentLabel && frames.length === 1) return;
@@ -720,7 +729,7 @@ export function createThinkingLabelAnimator(
 			appliedLabel = currentLabel;
 		},
 		show(label: string): void {
-			ui.setHiddenThinkingLabel(label);
+			ui.setHiddenThinkingLabel(padThinkingLabel(label));
 		},
 		restore(): void {
 			// undefined → pi falls back to its default static label.

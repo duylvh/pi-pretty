@@ -73,7 +73,7 @@ try {
 				timeout: 60_000,
 			});
 			expect(JSON.parse(output.trim().split("\n").at(-1)!)).toEqual([
-				"Thought for 4s", "Thought for 8s", "Thinking... 0s",
+				" Thought for 4s", " Thought for 8s", " Thinking... 0ms",
 			]);
 		} finally {
 			rmSync(dir, { recursive: true, force: true });

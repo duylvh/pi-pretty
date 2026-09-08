@@ -135,7 +135,8 @@ export function registerReadTool(
 			// or unsupported by the terminal.
 			if (d?._type === "readImage") {
 				const note = getText(result);
-				text.setText(note ? fillToolBody(note, BG_BASE) : "");
+				// Keep fallback text visually separated from the preceding tool row.
+				text.setText(note ? fillToolBody(`\n${note}`, BG_BASE) : "");
 				return text;
 			}
 
@@ -160,7 +161,7 @@ export function registerReadTool(
 						: `${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}`;
 					text.setText(
 						fillToolBody(
-							`\n${TOOL_RESULT_INDENT}${title}${theme.fg("dim", off2)}\n\n${TOOL_RESULT_INDENT}${FG_DIM}${total} lines — ctrl+o to expand${RST}`,
+							`\n${TOOL_RESULT_INDENT}${title}${theme.fg("dim", off2)} ${FG_DIM}${total} lines — ctrl+o to expand${RST}`,
 							BG_BASE,
 						),
 					);
@@ -250,18 +251,18 @@ type ReadHighlightCache = ReadHighlightRequest & {
 };
 
 function nextReadRenderToken(ctx: RenderCtxLike): number {
-	const state = ctx.state as Record<string, unknown>;
+	const state = ctx.state;
 	const token = typeof state[READ_RENDER_TOKEN] === "number" ? state[READ_RENDER_TOKEN] + 1 : 1;
 	state[READ_RENDER_TOKEN] = token;
 	return token;
 }
 
 function isCurrentReadRender(ctx: RenderCtxLike, token: number): boolean {
-	return (ctx.state as Record<string, unknown>)[READ_RENDER_TOKEN] === token;
+	return ctx.state[READ_RENDER_TOKEN] === token;
 }
 
 function getCachedReadHighlight(ctx: RenderCtxLike, request: ReadHighlightRequest): string | undefined {
-	const cache = (ctx.state as Record<string, unknown>)[READ_HIGHLIGHT_CACHE] as ReadHighlightCache | undefined;
+	const cache = ctx.state[READ_HIGHLIGHT_CACHE] as ReadHighlightCache | undefined;
 	if (!cache) return undefined;
 	if (
 		cache.content !== request.content ||
@@ -276,7 +277,7 @@ function getCachedReadHighlight(ctx: RenderCtxLike, request: ReadHighlightReques
 }
 
 function setCachedReadHighlight(ctx: RenderCtxLike, request: ReadHighlightRequest, highlighted: string): void {
-	(ctx.state as Record<string, unknown>)[READ_HIGHLIGHT_CACHE] = {
+	ctx.state[READ_HIGHLIGHT_CACHE] = {
 		...request,
 		highlighted,
 	} satisfies ReadHighlightCache;

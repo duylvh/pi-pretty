@@ -70,13 +70,13 @@ function noopCwd(exec: any) {
 type Ctx = {
 	lastComponent: MockText;
 	isError: boolean;
-	state: Record<string, never>;
+	state: Record<string, unknown>;
 	expanded: boolean;
 	invalidate: () => void;
 };
 
-function ctx(expanded: boolean): Ctx {
-	return { lastComponent: new MockText(), isError: false, state: {}, expanded, invalidate: () => {} };
+function ctx(expanded: boolean, state: Record<string, unknown> = {}): Ctx {
+	return { lastComponent: new MockText(), isError: false, state, expanded, invalidate: () => {} };
 }
 
 /**
@@ -94,31 +94,33 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 		process.stdout.columns = 100;
 	});
 
-	it("bash collapsed: title has top and bottom padding", () => {
+	it("bash collapsed: summary moves into the title row", () => {
 		const tool = loadTools().get("bash");
-		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(false));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(false, state));
 		const result = tool.renderResult(
 			{ content: [{ type: "text", text: "out" }], details: { _type: "bashResult", text: "out", exitCode: 0, command: "echo out" } },
 			{},
 			mockTheme,
-			ctx(false),
+			ctx(false, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
-		expect(rows[1]?.trim()).toBe("$ echo out");
+		expect(rows[1]).toContain("$ echo out");
+		expect(rows[1]).toContain("1 lines · ctrl+o to expand");
 		expect(rows[2]?.trim()).toBe("");
-		expect(rows[3]).toContain("1 lines");
-		expect(rows.at(-1)?.trim()).toBe("");
+		expect(rows).toHaveLength(3);
 	});
 
 	it("bash expanded: title padding does not remove internal info/body spacing", () => {
 		const tool = loadTools().get("bash");
-		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(true));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(true, state));
 		const result = tool.renderResult(
 			{ content: [{ type: "text", text: "out" }], details: { _type: "bashResult", text: "out", exitCode: 0, command: "echo out" } },
 			{},
 			mockTheme,
-			ctx(true),
+			ctx(true, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
@@ -130,9 +132,10 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 		expect(rows.at(-1)?.trim()).toBe("");
 	});
 
-	it("grep collapsed: title has top and bottom padding", () => {
+	it("grep collapsed: summary moves into the title row", () => {
 		const tool = loadTools().get("grep");
-		const call = tool.renderCall({ pattern: "todo" }, mockTheme, ctx(false));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ pattern: "todo" }, mockTheme, ctx(false, state));
 		const result = tool.renderResult(
 			{
 				content: [{ type: "text", text: "a.ts:1: todo" }],
@@ -140,19 +143,20 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 			},
 			{},
 			mockTheme,
-			ctx(false),
+			ctx(false, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
-		expect(rows[1]?.trim()).toContain("✱ grep");
+		expect(rows[1]).toContain("✱ grep");
+		expect(rows[1]).toContain("1 lines — ctrl+o to expand");
 		expect(rows[2]?.trim()).toBe("");
-		expect(rows[3]).toContain("1 lines");
-		expect(rows.at(-1)?.trim()).toBe("");
+		expect(rows).toHaveLength(3);
 	});
 
 	it("find expanded: title has top and bottom padding", () => {
 		const tool = loadTools().get("find");
-		const call = tool.renderCall({ pattern: "*.ts" }, mockTheme, ctx(true));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ pattern: "*.ts" }, mockTheme, ctx(true, state));
 		const result = tool.renderResult(
 			{
 				content: [{ type: "text", text: "src/a.ts\nsrc/b.ts" }],
@@ -160,7 +164,7 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 			},
 			{},
 			mockTheme,
-			ctx(true),
+			ctx(true, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
@@ -170,21 +174,22 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 		expect(rows.at(-1)?.trim()).toBe("");
 	});
 
-	it("find with no matches: title padding remains before the zero-count line", () => {
+	it("find with no matches: zero-count summary moves into the title row", () => {
 		const tool = loadTools().get("find");
-		const call = tool.renderCall({ pattern: "*.missing" }, mockTheme, ctx(false));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ pattern: "*.missing" }, mockTheme, ctx(false, state));
 		const result = tool.renderResult(
 			{ content: [{ type: "text", text: "" }], details: { _type: "findResult", text: "", pattern: "*.missing", matchCount: 0 } },
 			{},
 			mockTheme,
-			ctx(false),
+			ctx(false, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
-		expect(rows[1]?.trim()).toContain("✱ find");
+		expect(rows[1]).toContain("✱ find");
+		expect(rows[1]).toContain("0 files");
 		expect(rows[2]?.trim()).toBe("");
-		expect(rows[3]).toContain("0 files");
-		expect(rows.at(-1)?.trim()).toBe("");
+		expect(rows).toHaveLength(3);
 	});
 
 	it("find fallback (no details): title padding remains before preview text", () => {
@@ -199,31 +204,32 @@ describe("tool title/result spacing (blank rows around titles)", () => {
 		expect(rows.at(-1)?.trim()).toBe("");
 	});
 
-	it("ls collapsed: title has top and bottom padding", () => {
+	it("ls collapsed: summary moves into the title row", () => {
 		const tool = loadTools().get("ls");
-		const call = tool.renderCall({ path: "src" }, mockTheme, ctx(false));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ path: "src" }, mockTheme, ctx(false, state));
 		const result = tool.renderResult(
 			{ content: [{ type: "text", text: "a.ts" }], details: { _type: "lsResult", text: "a.ts", path: "src", entryCount: 1 } },
 			{},
 			mockTheme,
-			ctx(false),
+			ctx(false, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");
-		expect(rows[1]?.trim()).toBe("ls src");
+		expect(rows[1]?.trim()).toBe("ls src 1 entries — ctrl+o to expand");
 		expect(rows[2]?.trim()).toBe("");
-		expect(rows[3]).toContain("1 entries");
-		expect(rows.at(-1)?.trim()).toBe("");
+		expect(rows).toHaveLength(3);
 	});
 
 	it("ls expanded: title has top and bottom padding", () => {
 		const tool = loadTools().get("ls");
-		const call = tool.renderCall({ path: "src" }, mockTheme, ctx(true));
+		const state: Record<string, unknown> = {};
+		const call = tool.renderCall({ path: "src" }, mockTheme, ctx(true, state));
 		const result = tool.renderResult(
 			{ content: [{ type: "text", text: "a.ts" }], details: { _type: "lsResult", text: "a.ts", path: "src", entryCount: 1 } },
 			{},
 			mockTheme,
-			ctx(true),
+			ctx(true, state),
 		);
 		const rows = stackedRows(call, result);
 		expect(rows[0]?.trim()).toBe("");

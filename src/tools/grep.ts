@@ -5,7 +5,13 @@ import { BG_ERROR, FG_DIM, RST, resolveBaseBackground, TOOL_RESULT_INDENT } from
 import { fffFormatGrepText } from "../fff-helpers.js";
 import { normalizeLineEndings, shortPath } from "../helpers.js";
 import { NOTICE_PARTIAL_FILE_INDEX } from "../notices.js";
-import { fillToolBackground, fillToolBody, renderToolError } from "../render.js";
+import {
+	fillToolBackground,
+	fillToolBody,
+	rememberToolTitle,
+	renderToolError,
+	setCollapsedToolTitle,
+} from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { FffServiceWithCursor, GrepDetails, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { wrapExecuteWithMetrics } from "./metrics.js";
@@ -116,7 +122,10 @@ export function registerGrepTool(
 			if (limit !== undefined && limit !== null) out += theme.fg("dim", ` limit ${limit}`);
 			if (literal) out += theme.fg("dim", ` (literal)`);
 			if (caseInsensitive) out += theme.fg("dim", ` (case-insensitive)`);
-			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}\n`, ctx.isError ? BG_ERROR : undefined));
+			const renderTitle = (suffix = ""): string =>
+				fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}${suffix}\n`, ctx.isError ? BG_ERROR : undefined);
+			rememberToolTitle(ctx, text, renderTitle);
+			text.setText(renderTitle());
 			return text;
 		},
 
@@ -139,12 +148,9 @@ export function registerGrepTool(
 			if (d?._type === "grepResult" && d.text) {
 				const lines = d.text.split("\n");
 				if (!ctx.expanded) {
-					text.setText(
-						fillToolBody(
-							`${TOOL_RESULT_INDENT}${FG_DIM}${lines.length} lines — ctrl+o to expand${RST}`,
-							ctx.isError ? BG_ERROR : undefined,
-						),
-					);
+					const summary = `${FG_DIM}${lines.length} lines — ctrl+o to expand${RST}`;
+					if (setCollapsedToolTitle(ctx, text, ` ${summary}`)) return text;
+					text.setText(fillToolBody(`${TOOL_RESULT_INDENT}${summary}`, ctx.isError ? BG_ERROR : undefined));
 					return text;
 				}
 				const maxShow = lines.length;

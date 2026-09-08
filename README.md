@@ -221,8 +221,10 @@ hues at uniform perceived brightness. Renaming the session re-tints the indicato
 
 With thinking blocks hidden (pi's `hideThinkingBlock` setting), the label shows elapsed reasoning
 time (`Thinking... 12s`) under the same shimmer: italic `thinkingText` base with the accent band
-(and the session accent tint) sweeping through it. On the first text or tool delta it freezes as
-`Thought for 12s`. Durations use whole seconds (`12s`, `1m 05s`, `1h 02m 03s`).
+(and the session accent tint) sweeping through it. Both the active and completed labels have one
+leading space for consistent output alignment. On the first text or tool delta it freezes as
+`Thought for 12s`. Durations below one second use milliseconds (`250ms` instead of `0s`); longer
+durations retain compact whole-second units (`12s`, `1m 05s`, `1h 02m 03s`).
 
 Each row keeps its own label: pi-pretty intercepts the host's per-row label fan-out
 (`AssistantMessageComponent.prototype.setHiddenThinkingLabel`), so the streaming row animates while

@@ -1,12 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import piPrettyExtension from "../src/index.js";
-import { createPromptEditorClass, type CustomEditorConstructor } from "../src/prompt-editor.js";
+import { type CustomEditorConstructor, createPromptEditorClass } from "../src/prompt-editor.js";
 
 class FakeEditor {
 	private padding = 1;
+	protected borderColor = (text: string): string => text;
 
 	constructor(..._args: unknown[]) {}
+
+	protected renderTopBorder(width: number, _hiddenLineCount: number): string {
+		return "─".repeat(width);
+	}
+
+	protected renderBottomBorder(width: number, _hiddenLineCount: number): string {
+		return "─".repeat(width);
+	}
 
 	getPaddingX(): number {
 		return this.padding;
@@ -16,8 +25,8 @@ class FakeEditor {
 		this.padding = padding;
 	}
 
-	render(_width: number): string[] {
-		return ["top", `${" ".repeat(this.padding)}draft`, "bottom"];
+	render(width: number): string[] {
+		return [this.renderTopBorder(width, 0), `${" ".repeat(this.padding)}draft`, this.renderBottomBorder(width, 0)];
 	}
 }
 
@@ -52,6 +61,60 @@ describe("prompt editor", () => {
 		const editor = new PromptEditor(...([] as unknown as ConstructorParameters<CustomEditorConstructor>));
 
 		expect(editor.render(40)[1]).toBe("  <❯>    draft");
+	});
+
+	it("adds vertical borders around full-width live input rows", () => {
+		class FullWidthEditor extends FakeEditor {
+			override render(width: number): string[] {
+				const padding = " ".repeat(4);
+				const contentWidth = width - padding.length * 2;
+				const row = (content: string) => `${padding}${content}${" ".repeat(contentWidth - content.length)}${padding}`;
+				return [this.renderTopBorder(width, 0), row("draft"), row("second"), this.renderBottomBorder(width, 0), "completion"];
+			}
+		}
+		const PromptEditor = createPromptEditorClass(
+			FullWidthEditor as unknown as CustomEditorConstructor,
+			(text) => text,
+		);
+		const editor = new PromptEditor(...([] as unknown as ConstructorParameters<CustomEditorConstructor>));
+
+		const lines = editor.render(40);
+		expect(lines[0]).toBe(`╭${"─".repeat(38)}╮`);
+		expect(lines[1]).toMatch(/^│ ❯ draft/);
+		expect(lines[1]?.endsWith("│")).toBe(true);
+		expect(lines[1]).toHaveLength(40);
+		expect(lines[2]?.startsWith(`│${" ".repeat(3)}second`)).toBe(true);
+		expect(lines[2]?.endsWith("│")).toBe(true);
+		expect(lines[2]).toHaveLength(40);
+		expect(lines[3]).toBe(`╰${"─".repeat(38)}╯`);
+		expect(lines[4]).toBe("completion");
+	});
+
+	it("keeps the old prompt-only fallback when border hooks are unavailable", () => {
+		class LegacyEditor {
+			private padding = 0;
+
+			constructor(..._args: unknown[]) {}
+
+			getPaddingX(): number {
+				return this.padding;
+			}
+
+			setPaddingX(padding: number): void {
+				this.padding = padding;
+			}
+
+			render(_width: number): string[] {
+				return ["top", `${" ".repeat(this.padding)}draft`, "bottom", "completion"];
+			}
+		}
+		const PromptEditor = createPromptEditorClass(
+			LegacyEditor as unknown as CustomEditorConstructor,
+			(text) => text,
+		);
+		const editor = new PromptEditor(...([] as unknown as ConstructorParameters<CustomEditorConstructor>));
+
+		expect(editor.render(40)).toEqual(["top", " ❯ draft", "bottom", "completion"]);
 	});
 
 	it("installs the prompt editor only through the host's public editor API", async () => {

@@ -107,15 +107,16 @@ describe("read title spacing", () => {
 	const SGR = /[\u001b+\[[0-9;]*m/g;
 	const visible = (line: string): string => line.replace(SGR, "").trim();
 
-	it("collapsed: the read title has top and bottom padding", async () => {
+	it("collapsed: the read title includes the expand hint and keeps its padding", async () => {
 		const rendered = await renderSkill(plainFile, false, "/tmp/project/src/index.ts");
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const infoIdx = lines.findIndex((l) => l.includes("ctrl+o to expand"));
 		expect(titleIdx).toBe(1);
+		expect(infoIdx).toBe(titleIdx);
+		expect(lines[titleIdx]).toContain("3 lines");
 		expect(visible(lines[titleIdx - 1] ?? "")).toBe("");
 		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
-		expect(infoIdx).toBe(titleIdx + 2);
 		expect(visible(lines.at(-1) ?? "")).toBe("");
 	});
 

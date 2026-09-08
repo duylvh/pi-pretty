@@ -4,13 +4,16 @@
 
 ### Added
 
-- User messages render with a `❯` prompt icon using `userMessageText`; live input follows Pi's active thinking-level color (`thinkingOff` through `thinkingMax`) for its icon.
+- User messages render with a `❯` prompt icon using `userMessageText`; live input follows Pi's active thinking-level color (`thinkingOff` through `thinkingMax`) for its icon and now renders as a theme-colored rounded box.
 
 ### Fixed
 
 - Tool titles again have one blank row above and below them, and custom tool bodies now retain one blank row below their output. Host `edit`/`write` renderers remain unchanged.
+- Collapsed file-read previews now place their line count and `ctrl+o` expand hint in the title row instead of a separate body row.
+- Collapsed `bash`, `find`, `grep`, and `ls` summaries now appear in their title rows instead of separate body rows.
 - Collapsed reads of Pi's `README.md`, `docs/`, and `examples/` paths now use the `read docs` label, matching Pi's default renderer.
 - The working shimmer now uses Pi's embedded working-status row at the top border of the input when supported, with the older above-editor widget retained as a compatibility fallback.
+- Hidden-thinking labels now include left padding and show millisecond precision below one second (`250ms` instead of `0s`).
 - FFF no longer surfaces a startup error when Pi launches from the exact home directory or filesystem root. It now falls back to SDK-backed `find`/`grep`; home and root indexing require explicit opt-in via `pi-pretty.json`, environment variables, or CLI flags.
 - FFF initialization failures no longer duplicate the `FFF init failed:` prefix; unexpected failures are reported once as warnings.
 

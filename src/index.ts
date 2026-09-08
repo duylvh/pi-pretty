@@ -493,7 +493,7 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 	// The completed wording belongs to the message that produced it. The label
 	// is global, so once that assistant message ends, restore pi's default —
 	// otherwise every later phase stamps its frozen duration onto every hidden
-	// thinking row in the transcript (the image-read "Thought for 5s" stack).
+	// thinking row in the transcript (the image-read " Thought for 5s" stack).
 	pi.on("message_end", async (event: MessageEndEvent, ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui" || event.message.role !== "assistant") return;
 		if (thinkingInterval || thinkingTimer) stopThinkingShimmer();
