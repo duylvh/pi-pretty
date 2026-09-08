@@ -15,17 +15,37 @@ type ExecuteFn = (
 	ctx: ExtensionContext,
 ) => Promise<AgentToolResult<Record<string, unknown>>>;
 
-export function wrapExecuteWithMetrics(execute: ExecuteFn): ExecuteFn {
+export interface RejectedExecutionMetrics {
+	elapsedMs: number;
+	chars: number;
+}
+
+export type RejectedExecutionHandler = (toolCallId: string, metrics: RejectedExecutionMetrics) => void;
+
+export function wrapExecuteWithMetrics(execute: ExecuteFn, onRejected?: RejectedExecutionHandler): ExecuteFn {
 	return async (tid, params, sig, upd, ctx) => {
 		const start = performance.now();
-		const result = await execute(tid, params, sig, upd, ctx);
-		const elapsedMs = performance.now() - start;
-		const details = (result.details ?? {}) as Record<string, unknown>;
-		details[ELAPSED_KEY] = elapsedMs;
-		details[CHARS_KEY] = getOutputCharCount(result);
-		(result as { details: Record<string, unknown> }).details = details;
-		return result;
+		try {
+			const result = await execute(tid, params, sig, upd, ctx);
+			const elapsedMs = performance.now() - start;
+			const details = (result.details ?? {}) as Record<string, unknown>;
+			details[ELAPSED_KEY] = elapsedMs;
+			details[CHARS_KEY] = getOutputCharCount(result);
+			(result as { details: Record<string, unknown> }).details = details;
+			return result;
+		} catch (error) {
+			onRejected?.(tid, {
+				elapsedMs: performance.now() - start,
+				chars: getErrorCharCount(error),
+			});
+			throw error;
+		}
 	};
+}
+
+function getErrorCharCount(error: unknown): number {
+	const text = error instanceof Error ? error.message : String(error);
+	return text.replace(/\r/g, "").length;
 }
 
 function getOutputCharCount(result: AgentToolResult<unknown>): number {

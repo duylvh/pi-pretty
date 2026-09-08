@@ -672,6 +672,25 @@ describe("piPrettyExtension integration", () => {
 	// ---- session lifecycle ---------------------------------------------
 
 	describe("session lifecycle", () => {
+		it("keeps the current finder when a replacement scope fails", async () => {
+			const current = mkFinder();
+			const create = vi.fn()
+				.mockReturnValueOnce({ ok: true, value: current })
+				.mockReturnValueOnce({ ok: false, error: RESTRICTED_FFF_ERROR });
+			const notify = vi.fn();
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+
+			await start({}, { cwd: "/tmp/project-a" });
+			await start({}, { cwd: homedir(), ui: { notify } });
+
+			expect(current.destroy).not.toHaveBeenCalled();
+			expect(notify).not.toHaveBeenCalled();
+			const result = await tools.get("find")!.execute("t1", { pattern: "*.ts" }, null, null, {});
+			expect(findExec).not.toHaveBeenCalled();
+			expect(result.content[0].text).toContain("src/index.ts");
+		});
+
 		it("recreates the finder when a later session changes its base path", async () => {
 			const first = mkFinder();
 			const second = mkFinder();

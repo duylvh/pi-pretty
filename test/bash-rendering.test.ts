@@ -85,6 +85,41 @@ function loadBashTool() {
 }
 
 describe("bash execution", () => {
+	it("preserves rejected execution metrics for error rendering", async () => {
+		const registerTool = vi.fn();
+		registerBashTool(
+			{ registerTool } as any,
+			process.cwd(),
+			undefined,
+			{
+				description: "bash",
+				parameters: {},
+				execute: vi.fn().mockRejectedValue(new Error("command failed")),
+			} as any,
+			MockText,
+		);
+
+		const tool = registerTool.mock.calls[0]?.[0];
+		await expect(tool.execute("metrics-error", { command: "false" }, undefined, undefined, {})).rejects.toThrow(
+			"command failed",
+		);
+		const rendered = tool.renderResult(
+			{ content: [{ type: "text", text: "command failed" }], details: {} },
+			{},
+			mockTheme,
+			{
+				lastComponent: new MockText(),
+				isError: true,
+				state: {},
+				expanded: false,
+				toolCallId: "metrics-error",
+			},
+		);
+
+		expect(rendered.getText()).toMatch(/\d+ms/);
+		expect(rendered.getText()).toContain("chars");
+	});
+
 	it("preserves rejected SDK executions as tool failures", async () => {
 		const failure = new Error("command failed");
 		const registerTool = vi.fn();

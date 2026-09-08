@@ -2,13 +2,54 @@
 
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { resolveBaseBackground, TOOL_RESULT_INDENT, termWidth } from "../config.js";
-import { compactErrorLines, inferBashExitCode, stripBashExitStatusLine } from "../helpers.js";
+import {
+	CHARS_KEY,
+	compactErrorLines,
+	ELAPSED_KEY,
+	formatCharCount,
+	inferBashExitCode,
+	stripBashExitStatusLine,
+} from "../helpers.js";
 import { fillToolBackground, renderToolDuration, renderToolError } from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { BashDetails, ComponentLike, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
-import { wrapExecuteWithMetrics } from "./metrics.js";
+import { type RejectedExecutionMetrics, wrapExecuteWithMetrics } from "./metrics.js";
 
 type Result = AgentToolResult<Record<string, unknown>>;
+
+const BASH_REJECTED_METRICS_KEY = "__piPrettyBashRejectedMetrics";
+const REJECTED_METRICS_TTL_MS = 60_000;
+const rejectedBashMetrics = new Map<string, RejectedExecutionMetrics>();
+
+function rememberRejectedBashMetrics(toolCallId: string, metrics: RejectedExecutionMetrics): void {
+	rejectedBashMetrics.set(toolCallId, metrics);
+	const timer = setTimeout(() => {
+		if (rejectedBashMetrics.get(toolCallId) === metrics) rejectedBashMetrics.delete(toolCallId);
+	}, REJECTED_METRICS_TTL_MS);
+	timer.unref?.();
+}
+
+function takeRejectedBashMetrics(ctx: RenderCtxLike): RejectedExecutionMetrics | undefined {
+	const state = ctx.state as Record<string, unknown>;
+	const cached = state[BASH_REJECTED_METRICS_KEY] as RejectedExecutionMetrics | undefined;
+	if (cached) return cached;
+	if (!ctx.toolCallId) return undefined;
+	const metrics = rejectedBashMetrics.get(ctx.toolCallId);
+	if (metrics) {
+		rejectedBashMetrics.delete(ctx.toolCallId);
+		state[BASH_REJECTED_METRICS_KEY] = metrics;
+	}
+	return metrics;
+}
+
+function addRejectedMetrics(result: Result, metrics: RejectedExecutionMetrics): Result {
+	const details = {
+		...((result.details ?? {}) as Record<string, unknown>),
+		[ELAPSED_KEY]: metrics.elapsedMs,
+		[CHARS_KEY]: metrics.chars,
+	};
+	return { ...result, details } as Result;
+}
 
 export function registerBashTool(
 	pi: ExtensionAPI,
@@ -38,7 +79,7 @@ export function registerBashTool(
 			// AgentToolResult has no portable `isError` field, so converting a bash
 			// failure into a successful-looking result hides the failure from the model.
 			return (await sdkTool.execute(tid, params, sig, upd, ctx)) as Result;
-		}),
+		}, rememberRejectedBashMetrics),
 
 		renderCall(args: any, theme: ThemeLike, ctx: RenderCtxLike) {
 			resolveBaseBackground(theme);
@@ -64,9 +105,11 @@ export function registerBashTool(
 			resolveBaseBackground(theme);
 
 			const text = ctx.lastComponent ?? new TC("", 0, 0);
+			const rejectedMetrics = takeRejectedBashMetrics(ctx);
+			const displayResult = rejectedMetrics ? addRejectedMetrics(result, rejectedMetrics) : result;
 
-			const details = result.details;
-			const tc = getText(result);
+			const details = displayResult.details;
+			const tc = getText(displayResult);
 			const d: BashDetails | undefined =
 				(details as BashDetails)?._type === "bashResult"
 					? (details as BashDetails)
@@ -84,7 +127,12 @@ export function registerBashTool(
 				const cleaned = stripBashExitStatusLine(d.text);
 				const output = isErr ? compactErrorLines(cleaned).join("\n") : cleaned;
 				const lineCount = output.split("\n").length;
-				const info = [`${lineCount} lines`, renderToolDuration(result), !ctx.expanded ? "ctrl+o to expand" : ""]
+				const info = [
+					`${lineCount} lines`,
+					renderToolDuration(displayResult),
+					rejectedMetrics ? formatCharCount(rejectedMetrics.chars) : "",
+					!ctx.expanded ? "ctrl+o to expand" : "",
+				]
 					.filter(Boolean)
 					.map((part) => theme.fg("dim", part))
 					.join(theme.fg("dim", " · "));
@@ -106,7 +154,7 @@ export function registerBashTool(
 					let key: string | undefined;
 					(text as unknown as Record<string, unknown>).render = (w: number) => {
 						const width = Math.max(1, Math.floor(w || termWidth()));
-						const k = `bash:${ctx.expanded ? "1" : "0"}:${width}:${d.exitCode ?? "killed"}:${output.length}:${renderToolDuration(result)}`;
+						const k = `bash:${ctx.expanded ? "1" : "0"}:${width}:${d.exitCode ?? "killed"}:${output.length}:${renderToolDuration(displayResult)}`;
 						if (key !== k) {
 							text.setText(renderFn(width));
 							key = k;
@@ -121,7 +169,7 @@ export function registerBashTool(
 				text.setText(renderToolError(tc || "Error", theme));
 				return text;
 			}
-			const fc = result.content?.[0];
+			const fc = displayResult.content?.[0];
 			text.setText(
 				fillToolBackground(
 					`${TOOL_RESULT_INDENT}${theme.fg("dim", fc && "text" in fc ? String(fc.text).slice(0, 120) : "done")}`,

@@ -190,8 +190,6 @@ export class FffService {
 				continue;
 			}
 
-			if (this.finder && !this.finder.isDestroyed) this.disposeFinder();
-
 			const promise = this._createFinder(cwd, options, requestedConfig);
 			this.finderPromise = promise;
 			this.finderPromiseConfig = requestedConfig;
@@ -210,8 +208,6 @@ export class FffService {
 	private async _createFinder(cwd: string, options: FffInitOptions, config: FinderConfig): Promise<void> {
 		if (!this.fffModule) return;
 
-		if (this.finder && !this.finder.isDestroyed) this.disposeFinder();
-
 		const result = this.createFinder(cwd, this.dbDir, options);
 		if (!result.ok) {
 			const kind = isRestrictedBasePathMessage(result.error) ? "restricted-base-path" : "native";
@@ -222,10 +218,32 @@ export class FffService {
 			);
 		}
 
-		this.finder = result.value;
-		const scan = await this.finder.waitForScan(15_000);
+		const candidate = result.value;
+		let scan: Awaited<ReturnType<typeof candidate.waitForScan>>;
+		try {
+			scan = await candidate.waitForScan(15_000);
+		} catch (error) {
+			if (!candidate.isDestroyed) {
+				try {
+					candidate.destroy();
+				} catch {
+					// Preserve the scan failure; the candidate is no longer selected.
+				}
+			}
+			throw error;
+		}
+
+		const previous = this.finder;
+		this.finder = candidate;
 		this.partialIndex = scan.ok && !scan.value;
 		this.finderConfig = config;
+		if (previous && previous !== candidate && !previous.isDestroyed) {
+			try {
+				previous.destroy();
+			} catch {
+				// Keep the replacement active; native cleanup is best effort.
+			}
+		}
 	}
 
 	private createFinder(
