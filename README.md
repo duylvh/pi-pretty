@@ -182,7 +182,7 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 | `workingIndicator.mid` | theme color name or `#hex` | — | `muted` |
 | `workingIndicator.high` | theme color name or `#hex` | — | `accent` |
 | `workingIndicator.bold` | boolean | — | `true` |
-| `workingIndicator.hint` | boolean | — | `true` |
+| `workingIndicator.hint` | boolean | — | deprecated (ignored) |
 | `workingIndicator.sessionAccent` | boolean | — | `true` |
 | `thinkingIndicator.enabled` | boolean | `PRETTY_THINKING_INDICATOR` (`on`/`off`) | `true` |
 
@@ -195,18 +195,15 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 
 While the agent streams, pi-pretty replaces pi's static `Working...` row with an
 [oh-my-pi](https://github.com/can1357/oh-my-pi)-style shimmer: a bright accent band sweeps across the
-text at 30 cells/second over a dim braille spinner, followed by the interrupt hint, rendered
-**flush-left** in Pi's embedded working-status row at the top border of the input. On hosts that
-provide Pi's embedded working-status API, pi-pretty supplies its custom frames to that row; older
-hosts fall back to a zero-padding widget above the editor. Mode `kitt` swaps the sweep for a
-ping-ponging scanner head with a decay trail; `static` renders a single unanimated frame. Tier
-colors resolve `#rrggbb` hex first, then the active pi theme color name, then built-in fallbacks.
-Set `workingIndicator.enabled: false` (or `PRETTY_WORKING_INDICATOR=off`) to restore pi's default
+text at 30 cells/second over a dim braille spinner, rendered **flush-left** in Pi's embedded
+working-status row at the top border of the input. The custom row contains only the spinner and
+shimmer text; it does not append Pi's interrupt hint or token-count status. On hosts that provide
+Pi's embedded working-status API, pi-pretty supplies its custom frames to that row; older hosts
+fall back to a zero-padding widget above the editor. Mode `kitt` swaps the sweep for a ping-ponging
+scanner head with a decay trail; `static` renders a single unanimated frame. Tier colors resolve
+`#rrggbb` hex first, then the active pi theme color name, then built-in fallbacks. Set
+`workingIndicator.enabled: false` (or `PRETTY_WORKING_INDICATOR=off`) to restore pi's default
 indicator. TUI sessions only; theme changes take effect on the next session.
-
-While the agent streams, the row also shows a dim live token suffix — ` (↓ 1,234 tokens)` — refreshed
-once per second. The count uses the provider's `usage.output` when the stream exposes it, otherwise a
-visible-characters ÷ 4 estimate over text and thinking blocks.
 
 `text` accepts a single phrase or an array — the sweep plays each phrase in order, one full band
 sweep per phrase (e.g. `["Working…", "Thinking…", "Pondering…"]`). The env var splits on commas.

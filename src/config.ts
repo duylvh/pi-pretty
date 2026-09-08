@@ -77,6 +77,7 @@ export interface WorkingIndicatorConfig {
 	mid?: string;
 	high?: string;
 	bold?: boolean;
+	/** @deprecated Retained for config compatibility; the working row no longer renders this hint. */
 	hint?: boolean;
 	/** Tint the indicator with a stable per-session accent color. */
 	sessionAccent?: boolean;

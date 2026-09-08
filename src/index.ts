@@ -49,7 +49,6 @@ import {
 	thinkingBlockActive,
 	WORKING_INTERVAL_MS,
 	type WorkingIndicatorController,
-	workingTokens,
 } from "./working-indicator.js";
 
 // ---------------------------------------------------------------------------
@@ -224,12 +223,10 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 		editorUi.setEditorComponent((tui, theme, keybindings) => new PromptEditor(tui, theme, keybindings));
 		promptEditorInstalled = true;
 	};
-	let workingStatsUpdatedAt = 0;
 	let perRowLabels: PerRowThinkingLabels | undefined;
 	/** Accumulated thinking time per message timestamp — later runs in the same
 	 * message resume from this total instead of rewinding to zero. */
 	const thinkingElapsedMs = new Map<number, number>();
-	const TOKEN_COUNT_FORMAT = new Intl.NumberFormat("en-US");
 
 	/** Message timestamps are the per-row identity the label patch keys on. */
 	const messageTimestamp = (message: unknown): number | undefined => {
@@ -355,8 +352,6 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 	pi.on("agent_start", async (_event: unknown, ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui") return;
 		workingStreaming = true;
-		workingStatsUpdatedAt = 0;
-		workingController?.setStats(undefined);
 		workingController?.start();
 	});
 	const stopStreaming = async (_event: unknown, ctx: ExtensionContext): Promise<void> => {
@@ -468,13 +463,6 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 	pi.on("message_update", async (event: MessageUpdateEvent, ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui" || !workingStreaming) return;
 		thinkingLastMessage = event.message;
-		// Live token suffix on the working row (throttled to one update/second).
-		const now = Date.now();
-		if (now - workingStatsUpdatedAt >= 1000) {
-			workingStatsUpdatedAt = now;
-			const tokens = workingTokens(event.message);
-			workingController?.setStats(tokens > 0 ? ` (↓ ${TOKEN_COUNT_FORMAT.format(tokens)} tokens)` : undefined);
-		}
 		if (thinkingInterval) {
 			// Complete immediately on the first text/tool delta instead of waiting
 			// for the next animation frame.

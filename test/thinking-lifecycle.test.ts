@@ -299,7 +299,7 @@ describe("thinking timer lifecycle wiring", () => {
 		expect(labels.at(-1)).toBeUndefined();
 	});
 
-	it("feeds the working-row token suffix: 1/s throttle, agent_start reset, ticker requestRender", async () => {
+	it("does not add a token suffix to the working row and keeps ticker renders", async () => {
 		const ctx = await loadExtension();
 		// Materialize the real widget through the captured setWidget factory — the
 		// factory closure returns the same instance the controller drives.
@@ -327,16 +327,16 @@ describe("thinking timer lifecycle wiring", () => {
 		});
 
 		await events.get("message_update")!({ message: textMessage(400) }, ctx);
-		expect(statsWrites).toEqual([" (↓ 100 tokens)"]);
-		// Same-second deltas are throttled away
+		expect(statsWrites).toEqual([]);
+		// Token-bearing deltas never add a suffix to the widget.
 		await events.get("message_update")!({ message: textMessage(600) }, ctx);
 		await events.get("message_update")!({ message: textMessage(800) }, ctx);
-		expect(statsWrites).toHaveLength(1);
+		expect(statsWrites).toEqual([]);
 
 		vi.setSystemTime(Date.now() + 1100);
 		await events.get("message_update")!({ message: textMessage(800) }, ctx);
-		expect(statsWrites.at(-1)).toBe(" (↓ 200 tokens)");
-		expect(stripAnsi(widget.render(120)[0] ?? "")).toContain("(↓ 200 tokens)");
+		expect(statsWrites).toEqual([]);
+		expect(stripAnsi(widget.render(120)[0] ?? "")).not.toContain("tokens");
 
 		// The thinking ticker reuses the widget's TUI handle for its renders
 		await events.get("message_update")!({ message: thinkingMessage }, ctx);
@@ -344,9 +344,9 @@ describe("thinking timer lifecycle wiring", () => {
 		vi.advanceTimersByTime(99);
 		expect(tuiRenders.length).toBeGreaterThan(before);
 
-		// A new run resets the suffix
+		// A new run remains free of the legacy suffix
 		await events.get("agent_end")!({}, ctx);
 		await events.get("agent_start")!({}, ctx);
-		expect(statsWrites.at(-1)).toBeUndefined();
+		expect(statsWrites).toEqual([]);
 	});
 });

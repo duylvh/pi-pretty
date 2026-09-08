@@ -13,6 +13,7 @@
 - Collapsed `bash`, `find`, `grep`, and `ls` summaries now appear in their title rows instead of separate body rows.
 - Collapsed reads of Pi's `README.md`, `docs/`, and `examples/` paths now use the `read docs` label, matching Pi's default renderer.
 - The working shimmer now uses Pi's embedded working-status row at the top border of the input when supported, with the older above-editor widget retained as a compatibility fallback.
+- The working shimmer no longer appends its own interrupt hint or live token-count suffix; legacy `workingIndicator.hint` configuration remains accepted but is ignored.
 - Hidden-thinking labels now include left padding and show millisecond precision below one second (`250ms` instead of `0s`).
 - FFF no longer surfaces a startup error when Pi launches from the exact home directory or filesystem root. It now falls back to SDK-backed `find`/`grep`; home and root indexing require explicit opt-in via `pi-pretty.json`, environment variables, or CLI flags.
 - FFF initialization failures no longer duplicate the `FFF init failed:` prefix; unexpected failures are reported once as warnings.

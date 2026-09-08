@@ -133,12 +133,13 @@ describe("buildWorkingFrames (classic shimmer)", () => {
 		}
 	});
 
-	it("appends the pre-colored hint suffix verbatim", async () => {
+	it("does not append the legacy interrupt hint suffix", async () => {
 		const { buildWorkingFrames } =
 			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");
 		const hint = `${L} (ctrl+esc to interrupt)${RESET}`;
 		const { frames } = buildWorkingFrames(["Working…"], { mode: "shimmer", ansi: ANSI, spinner: false, hint });
-		expect(frames[0].endsWith(hint)).toBe(true);
+		expect(stripAnsi(frames[0] ?? "")).toBe("Working…");
+		expect(frames[0]).not.toContain("to interrupt");
 	});
 });
 
@@ -166,12 +167,12 @@ describe("buildWorkingFrames (rotating phrases)", () => {
 		expect(stripAnsi(frames[26])[0]).not.toBe(nextGlyph);
 	});
 
-	it("appends the hint to every frame across all chapters", async () => {
+	it("does not append the legacy interrupt hint across chapters", async () => {
 		const { buildWorkingFrames } =
 			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");
 		const hint = `${L} (esc to interrupt)${RESET}`;
 		const { frames } = buildWorkingFrames(["ab…", "xyz"], { mode: "shimmer", ansi: ANSI, spinner: false, hint });
-		for (const frame of frames) expect(frame.endsWith(hint)).toBe(true);
+		for (const frame of frames) expect(frame).not.toContain("to interrupt");
 	});
 
 	it("skips empty phrases and yields no frames when all are empty", async () => {
@@ -281,7 +282,7 @@ describe("WorkingWidget", () => {
 		expect(() => bare.requestRender()).not.toThrow();
 	});
 
-	it("appends the dim stats suffix after the frame, truncated to width", async () => {
+	it("ignores the legacy token stats suffix", async () => {
 		const { WorkingWidget } =
 			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");
 		const widget = new WorkingWidget();
@@ -290,13 +291,8 @@ describe("WorkingWidget", () => {
 		expect(widget.render(80)).toEqual([`${H}Working…${RESET}`]);
 		widget.setStats(" (↓ 1,234 tokens)");
 		const line = widget.render(80)[0] ?? "";
-		expect(stripAnsi(line)).toBe("Working… (↓ 1,234 tokens)");
-		expect(line).toContain("\u001b[38;2;80;80;80m"); // dim styling from the widget
-		// Narrow viewport truncates the combined line, never overflows
-		const narrow = widget.render(8)[0] ?? "";
-		expect(stripAnsi(narrow).length).toBeLessThanOrEqual(8);
-		widget.setStats(undefined);
-		expect(widget.render(80)).toEqual([`${H}Working…${RESET}`]);
+		expect(line).toBe(`${H}Working…${RESET}`);
+		expect(line).not.toContain("tokens");
 	});
 });
 
@@ -470,7 +466,7 @@ describe("installWorkingIndicator", () => {
 		controller.setStats(" (↓ 42 tokens)");
 		controller.stop();
 		expect(visible).toEqual([false, true, false]);
-		expect(messages.at(-1)).toBe("\x1b[38;2;80;80;80m(↓ 42 tokens)\x1b[39m");
+		expect(messages.at(-1)).toBe("");
 
 		controller.start();
 		controller.dispose();
@@ -529,12 +525,12 @@ describe("installWorkingIndicator", () => {
 		const line = component.render(80)[0];
 		// Flush-left: visible text starts with the spinner glyph — no leading padding
 		expect(stripAnsi(line)).toMatch(/^⠋ /);
-		expect(line).toContain("(ctrl+esc to interrupt)");
+		expect(line).not.toContain("to interrupt");
 		controller.stop();
 		expect(component.render(80)).toEqual([]);
 	});
 
-	it("controller exposes setStats and requestRender passthroughs", async () => {
+	it("keeps requestRender and ignores legacy stats updates", async () => {
 		vi.useFakeTimers();
 		const { installWorkingIndicator, WORKING_INDICATOR_DEFAULTS } =
 			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");
@@ -550,7 +546,7 @@ describe("installWorkingIndicator", () => {
 		controller.requestRender();
 		expect(tuiRenders).toHaveLength(1);
 		controller.setStats(" (↓ 42 tokens)");
-		expect(stripAnsi(component.render(80)[0] ?? "")).toContain("(↓ 42 tokens)");
+		expect(stripAnsi(component.render(80)[0] ?? "")).not.toContain("tokens");
 	});
 
 	it("start/stop follow the streaming lifecycle idempotently", async () => {
@@ -616,7 +612,7 @@ describe("installWorkingIndicator", () => {
 		expect(widgets).toEqual([]);
 	});
 
-	it("still installs when keybindings are unavailable (hint dropped)", async () => {
+	it("still installs without resolving legacy keybindings", async () => {
 		vi.useFakeTimers();
 		const { installWorkingIndicator, WORKING_INDICATOR_DEFAULTS } =
 			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");

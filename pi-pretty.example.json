@@ -28,7 +28,6 @@
 		"mid": "muted",
 		"high": "accent",
 		"bold": true,
-		"hint": true,
 		"sessionAccent": true
 	},
 	"thinkingIndicator": {

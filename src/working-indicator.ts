@@ -9,9 +9,9 @@
  * to the host so the row is rendered in the editor's top border. Older hosts
  * without that API use the zero-padding widget fallback above the editor.
  *
- * Frame layout: `<dim spinner> <shimmer text> <dim interrupt hint>`, one full
- * sweep per phrase — `texts` rotates through phrases chapter by chapter with
- * a continuous spinner phase.
+ * Frame layout: `<dim spinner> <shimmer text>`, one full sweep per phrase —
+ * `texts` rotates through phrases chapter by chapter with a continuous spinner
+ * phase. The extension adds no interrupt hint or token-count suffix.
  */
 
 import { truncateToWidth } from "@earendil-works/pi-tui";
@@ -59,6 +59,7 @@ export interface WorkingIndicatorSettings {
 	mode: WorkingIndicatorMode;
 	palette: WorkingIndicatorPalette;
 	bold: boolean;
+	/** @deprecated Retained for config compatibility; no interrupt hint is rendered. */
 	hint: boolean;
 	/** Tint mid/high tiers (and dim the spinner) with a per-session accent color. */
 	sessionAccent: boolean;
@@ -259,7 +260,7 @@ export interface WorkingFrameOptions {
 	spinnerColor?: string;
 	/** Wrap every frame in italic (pi's hidden-thinking label is italic). */
 	italic?: boolean;
-	/** Pre-colored suffix (e.g. the dim interrupt hint) appended to every frame. */
+	/** @deprecated Retained for call-site compatibility; suffixes are not rendered. */
 	hint?: string;
 	intervalMs?: number;
 }
@@ -275,7 +276,6 @@ export function buildWorkingFrames(
 ): { frames: string[]; intervalMs: number } {
 	const intervalMs = options.intervalMs ?? WORKING_INTERVAL_MS;
 	const bold = options.bold ?? true;
-	const suffix = options.hint ?? "";
 	const withSpinner = options.spinner ?? true;
 	const spinnerColor = options.spinnerColor ?? options.ansi.low;
 	const highOpen = bold ? `${BOLD_OPEN}${options.ansi.high}` : options.ansi.high;
@@ -329,7 +329,7 @@ export function buildWorkingFrames(
 					text,
 					ranges,
 					Array.from({ length: total }, () => "mid" as Tier),
-				)}${suffix}`,
+				)}`,
 			);
 			return { frames, intervalMs };
 		}
@@ -342,7 +342,7 @@ export function buildWorkingFrames(
 						text,
 						ranges,
 						Array.from({ length: total }, () => "high" as Tier),
-					)}${suffix}`,
+					)}`,
 				);
 				continue;
 			}
@@ -351,20 +351,20 @@ export function buildWorkingFrames(
 				const goingRight = sweep < range;
 				const head = goingRight ? sweep : cycleCells - sweep;
 				const tiers = Array.from({ length: total }, (_, i) => tierFor(kittIntensity(i, head, goingRight)));
-				frames.push(`${spinnerPrefix(spinnerIndex++)}${paintFrame(text, ranges, tiers)}${suffix}`);
+				frames.push(`${spinnerPrefix(spinnerIndex++)}${paintFrame(text, ranges, tiers)}`);
 			}
 		} else {
 			const period = total + CLASSIC_PADDING * 2;
 			for (let pos = 0; pos < period; pos++) {
 				const tiers = Array.from({ length: total }, (_, i) => tierFor(classicIntensity(i, pos)));
-				frames.push(`${spinnerPrefix(spinnerIndex++)}${paintFrame(text, ranges, tiers)}${suffix}`);
+				frames.push(`${spinnerPrefix(spinnerIndex++)}${paintFrame(text, ranges, tiers)}`);
 			}
 		}
 	}
 	return { frames, intervalMs };
 }
 
-/** Estimate streamed output tokens: provider `usage.output` when exposed, else visible chars ÷ 4. */
+/** @deprecated The working row no longer displays token stats. */
 export function workingTokens(message: unknown): number {
 	const usage = (message as { usage?: { output?: unknown } } | undefined)?.usage;
 	const output = Number(usage?.output);
@@ -400,7 +400,6 @@ export class WorkingWidget {
 	#tui: WidgetTuiLike | undefined;
 	#started = false;
 	#disposed = false;
-	#stats: string | undefined;
 
 	setFrames(frames: string[], intervalMs: number): void {
 		this.#frames = frames;
@@ -419,11 +418,8 @@ export class WorkingWidget {
 		this.#tui?.requestRender();
 	}
 
-	/** Dynamic right-side status segment (e.g. live token count), styled dim at
-	 * render time so theme changes don't bake stale ANSI into it. */
-	setStats(text: string | undefined): void {
-		this.#stats = text || undefined;
-	}
+	/** @deprecated Token stats are owned by Pi and are no longer rendered here. */
+	setStats(_text: string | undefined): void {}
 
 	start(): void {
 		if (this.#disposed || this.#started) return;
@@ -449,8 +445,7 @@ export class WorkingWidget {
 	render(width: number): string[] {
 		if (!this.#started || this.#frames.length === 0) return [];
 		const frame = this.#frames[this.#index % this.#frames.length] ?? "";
-		const suffix = this.#stats ? `${FG_DIM}${this.#stats}${RESET_FG}` : "";
-		return [truncateToWidth(frame + suffix, Math.max(1, width))];
+		return [truncateToWidth(frame, Math.max(1, width))];
 	}
 
 	invalidate(): void {
@@ -740,9 +735,9 @@ export function createThinkingLabelAnimator(
 
 // ─── Installation ────────────────────────────────────────────────────────────
 
-/** Structural slice of pi's Theme needed for the hint, palette, and thinking label. */
+/** Structural slice of pi's Theme needed for the palette and thinking label. */
 export interface WorkingThemeLike {
-	/** Narrowed to the only color the hint needs; pi's ThemeColor satisfies it. */
+	/** Retained for compatibility with older theme adapters. */
 	fg?: (name: "dim", text: string) => string;
 	getFgAnsi?: (name: "dim" | "muted" | "accent" | "thinkingText") => string;
 }
@@ -756,7 +751,7 @@ export interface WorkingUiLike {
 	theme?: WorkingThemeLike;
 	/** Hosts with Pi's embedded working-status API render this in the editor border. */
 	setWorkingIndicator?: (options?: WorkingStatusOptionsLike) => void;
-	/** Set the message appended after a custom native frame. */
+	/** Clear the host message appended after a custom native frame. */
 	setWorkingMessage?: (message?: string) => void;
 	setWorkingVisible(visible: boolean): void;
 	setWidget(
@@ -766,6 +761,7 @@ export interface WorkingUiLike {
 	): void;
 }
 
+/** @deprecated Retained for compatibility with the former hint-resolution seam. */
 export interface KeybindingsLike {
 	getKeys(name: string): string[];
 }
@@ -777,7 +773,7 @@ export interface WorkingIndicatorController {
 	stop(): void;
 	/** Remove the indicator and stop the animation. */
 	dispose(): void;
-	/** Update the dim right-side status segment (live token count). */
+	/** @deprecated Token stats are owned by Pi and are no longer rendered here. */
 	setStats(text: string | undefined): void;
 	/** Request a host render for consumers that drive another animated label. */
 	requestRender(): void;
@@ -786,45 +782,6 @@ export interface WorkingIndicatorController {
 }
 
 const WIDGET_KEY = "pi-pretty-working";
-
-async function loadHostKeybindings(): Promise<KeybindingsLike | undefined> {
-	try {
-		const tui = (await import("@earendil-works/pi-tui")) as typeof import("@earendil-works/pi-tui");
-		return tui.getKeybindings?.();
-	} catch {
-		return undefined;
-	}
-}
-
-function formatKeyText(keys: string[]): string {
-	const darwin = process.platform === "darwin";
-	return keys
-		.join("/")
-		.split("/")
-		.map((key) =>
-			key
-				.split("+")
-				.map((part) => (darwin && part.toLowerCase() === "alt" ? "option" : part))
-				.join("+"),
-		)
-		.join("/");
-}
-
-async function resolveHint(
-	ui: WorkingUiLike,
-	deps?: { getKeybindings?: () => KeybindingsLike | undefined | Promise<KeybindingsLike | undefined> },
-): Promise<string | undefined> {
-	try {
-		const loader = deps?.getKeybindings ?? loadHostKeybindings;
-		const keybindings = await loader();
-		const keys = keybindings?.getKeys?.("app.interrupt");
-		if (!keys?.length) return undefined;
-		const text = ` (${formatKeyText(keys)} to interrupt)`;
-		return ui.theme?.fg ? ui.theme.fg("dim", text) : text;
-	} catch {
-		return undefined;
-	}
-}
 
 /**
  * Install the custom working shimmer and return its lifecycle controller.
@@ -852,6 +809,7 @@ export async function installWorkingIndicator(
 	if (!settings.enabled) return noopController;
 	const texts = settings.texts.map((t) => t.trim()).filter((t) => t.length > 0);
 	if (texts.length === 0) return noopController;
+	void deps; // Retained for compatibility; interrupt hints are no longer resolved here.
 
 	const ansiResolved = resolvePaletteAnsi(settings.palette, ui.theme);
 	let ansi = ansiResolved;
@@ -864,25 +822,23 @@ export async function installWorkingIndicator(
 			spinnerColor = hexToAnsiFg(dimAccentHex(accentHex));
 		}
 	}
-	const hint = settings.hint ? await resolveHint(ui, deps) : undefined;
 	const { frames, intervalMs } = buildWorkingFrames(texts, {
 		mode: settings.mode,
 		ansi,
 		bold: settings.bold,
 		spinnerColor,
-		hint,
 	});
 	if (frames.length === 0) return noopController;
 
 	const setWorkingIndicator = ui.setWorkingIndicator;
 	const setWorkingMessage = ui.setWorkingMessage;
 	if (typeof setWorkingIndicator === "function" && typeof setWorkingMessage === "function") {
-		let stats: string | undefined;
 		let started = false;
 		let disposed = false;
-		const nativeMessage = (): string => (stats ? `${FG_DIM}${stats.trimStart()}${RESET_FG}` : "");
 		const updateNativeMessage = (): void => {
-			setWorkingMessage.call(ui, nativeMessage());
+			// Keep Pi's built-in message hidden because the custom frame already
+			// supplies the working label; no hint or token suffix is added here.
+			setWorkingMessage.call(ui, "");
 		};
 
 		try {
@@ -922,10 +878,7 @@ export async function installWorkingIndicator(
 				setWorkingIndicator.call(ui);
 				setWorkingMessage.call(ui);
 			},
-			setStats: (text: string | undefined) => {
-				stats = text || undefined;
-				updateNativeMessage();
-			},
+			setStats: (_text: string | undefined) => {},
 			requestRender: () => updateNativeMessage(),
 			frames,
 		};
@@ -952,7 +905,7 @@ export async function installWorkingIndicator(
 			widget.dispose();
 			ui.setWidget(WIDGET_KEY, undefined);
 		},
-		setStats: (text: string | undefined) => widget.setStats(text),
+		setStats: (_text: string | undefined) => {},
 		requestRender: () => widget.requestRender(),
 		frames,
 	};
