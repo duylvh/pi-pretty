@@ -54,6 +54,7 @@ export function registerReadTool(
 	_fffService: unknown,
 	sdkTool: SdkToolDef,
 	TextComp?: new (t?: string, x?: number, y?: number) => { setText(v: string): void },
+	renderContent: typeof renderFileContent = renderFileContent,
 ): void {
 	const TC = resolveTextCtor(TextComp);
 	const home = process.env.HOME ?? "";
@@ -100,13 +101,14 @@ export function registerReadTool(
 
 			const path = String(args.path ?? "");
 			const label = theme.fg("error", theme.bold("→ read"));
-			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${label} ${theme.fg("toolTitle", path)}`, BG_ERROR));
+			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${label} ${theme.fg("toolTitle", path)}`, BG_ERROR));
 			return text;
 		},
 
 		renderResult(result: Result, _opt: unknown, theme: ThemeLike, ctx: RenderCtxLike) {
 			resolveBaseBackground(theme);
 
+			const renderToken = nextReadRenderToken(ctx);
 			const text = ctx.lastComponent ?? new TC("", 0, 0);
 
 			if (ctx.isError) {
@@ -137,12 +139,12 @@ export function registerReadTool(
 				if (!ctx.expanded) {
 					if (skillName) {
 						const header = renderSkillHeader(skillName, false, theme);
-						text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${header}`, BG_BASE));
+						text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${header}`, BG_BASE));
 						return text;
 					}
 					text.setText(
 						fillToolBackground(
-							`\n${TOOL_RESULT_INDENT}${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}${theme.fg("dim", off2)}\n${TOOL_RESULT_INDENT}${FG_DIM}${total} lines — ctrl+o to expand${RST}\n`,
+							`${TOOL_RESULT_INDENT}${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}${theme.fg("dim", off2)}\n${TOOL_RESULT_INDENT}${FG_DIM}${total} lines — ctrl+o to expand${RST}`,
 							BG_BASE,
 						),
 					);
@@ -150,19 +152,34 @@ export function registerReadTool(
 				}
 				const maxShow = lines.length;
 				const show = lines.slice(0, maxShow);
-				const nw = Math.max(3, String((d.offset || 0) + total).length);
+				const offset = d.offset || 0;
+				const nw = Math.max(3, String(offset + total).length);
 				const gw = nw + 3;
 				const cw = Math.max(1, tw - gw);
 
 				const header = skillName
 					? renderSkillHeader(skillName, true, theme)
 					: `${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}${theme.fg("dim", off2)}`;
-				const out: string[] = ["", `${TOOL_RESULT_INDENT}${header}`];
+				const highlightRequest: ReadHighlightRequest = {
+					content: d.content,
+					filePath: d.filePath,
+					offset,
+					maxLines: maxShow,
+					width: cw,
+				};
+				const cachedHighlight = getCachedReadHighlight(ctx, highlightRequest);
+				if (cachedHighlight !== undefined) {
+					const highlighted = buildHighlightedRead(cachedHighlight, header, skillName, offset, nw, tw);
+					text.setText(fillToolBackground(highlighted, BG_BASE));
+					return text;
+				}
+
+				const out: string[] = [`${TOOL_RESULT_INDENT}${header}`];
 				out.push(`${TOOL_RESULT_INDENT}${FG_RULE}${"─".repeat(tw - 1)}${RST}`);
 				for (let i = 0; i < show.length; i++) {
-					const ln = (d.offset || 0) + i + 1;
+					const ln = offset + i + 1;
 					const code = show[i] ?? "";
-					const display = code.length > cw ? code.slice(0, Math.max(0, cw - 1)) + `${FG_DIM}›${RST}` : code;
+					const display = code.length > cw ? `${code.slice(0, Math.max(0, cw - 1))}${FG_DIM}›${RST}` : code;
 					const lineNo = String(ln);
 					out.push(
 						`${TOOL_RESULT_INDENT}${FG_LNUM}${" ".repeat(Math.max(0, nw - lineNo.length))}${lineNo}${RST} ${FG_RULE}│${RST} ${display}${RST}`,
@@ -171,27 +188,18 @@ export function registerReadTool(
 				if (total > maxShow) {
 					out.push(`${TOOL_RESULT_INDENT}${FG_DIM}… ${total - maxShow} more lines (${total} total)${RST}`);
 				}
-				out.push("");
 				const rendered = out.join("\n");
 				text.setText(fillToolBackground(rendered, BG_BASE));
-				(ctx as any).state._rt = rendered;
 
-				// Async syntax highlighting via Shiki
-				renderFileContent(d.content, d.filePath, d.offset || 0, maxShow, cw)
+				// Async syntax highlighting via Shiki. The component is reused across
+				// expansion changes, so stale work must not restore an older view.
+				renderContent(d.content, d.filePath, offset, maxShow, cw)
 					.then((hl) => {
-						const padded = hl
-							.split("\n")
-							.map((line, index) => {
-								const lineNo = String((d.offset || 0) + index + 1);
-								return `${TOOL_RESULT_INDENT}${FG_LNUM}${" ".repeat(Math.max(0, nw - lineNo.length))}${lineNo}${RST} ${FG_RULE}│${RST} ${line}${RST}`;
-							})
-							.join("\n");
-						const divider = skillName
-							? `${TOOL_RESULT_INDENT}${FG_RULE}${"─".repeat(Math.max(1, tw - 1))}${RST}\n`
-							: "";
-						const rendered = `\n${TOOL_RESULT_INDENT}${header}\n${divider}${padded}\n`;
-						text.setText(fillToolBackground(rendered, BG_BASE));
-						(ctx as any).state._rt = rendered;
+						if (!isCurrentReadRender(ctx, renderToken)) return;
+						setCachedReadHighlight(ctx, highlightRequest, hl);
+						const highlighted = buildHighlightedRead(hl, header, skillName, offset, nw, tw);
+						text.setText(fillToolBackground(highlighted, BG_BASE));
+						ctx.invalidate?.();
 					})
 					.catch(() => {});
 
@@ -208,6 +216,73 @@ export function registerReadTool(
 			return text;
 		},
 	} as unknown as ToolDefinition<any, any, any>);
+}
+
+const READ_RENDER_TOKEN = "__piPrettyReadRenderToken";
+const READ_HIGHLIGHT_CACHE = "__piPrettyReadHighlightCache";
+
+type ReadHighlightRequest = {
+	content: string;
+	filePath: string;
+	offset: number;
+	maxLines: number;
+	width: number;
+};
+
+type ReadHighlightCache = ReadHighlightRequest & {
+	highlighted: string;
+};
+
+function nextReadRenderToken(ctx: RenderCtxLike): number {
+	const state = ctx.state as Record<string, unknown>;
+	const token = typeof state[READ_RENDER_TOKEN] === "number" ? state[READ_RENDER_TOKEN] + 1 : 1;
+	state[READ_RENDER_TOKEN] = token;
+	return token;
+}
+
+function isCurrentReadRender(ctx: RenderCtxLike, token: number): boolean {
+	return (ctx.state as Record<string, unknown>)[READ_RENDER_TOKEN] === token;
+}
+
+function getCachedReadHighlight(ctx: RenderCtxLike, request: ReadHighlightRequest): string | undefined {
+	const cache = (ctx.state as Record<string, unknown>)[READ_HIGHLIGHT_CACHE] as ReadHighlightCache | undefined;
+	if (!cache) return undefined;
+	if (
+		cache.content !== request.content ||
+		cache.filePath !== request.filePath ||
+		cache.offset !== request.offset ||
+		cache.maxLines !== request.maxLines ||
+		cache.width !== request.width
+	) {
+		return undefined;
+	}
+	return cache.highlighted;
+}
+
+function setCachedReadHighlight(ctx: RenderCtxLike, request: ReadHighlightRequest, highlighted: string): void {
+	(ctx.state as Record<string, unknown>)[READ_HIGHLIGHT_CACHE] = {
+		...request,
+		highlighted,
+	} satisfies ReadHighlightCache;
+}
+
+function buildHighlightedRead(
+	highlighted: string,
+	header: string,
+	skillName: string | undefined,
+	offset: number,
+	nw: number,
+	tw: number,
+): string {
+	const padded = highlighted
+		.split("\n")
+		.map((line, index) => {
+			const lineNo = String(offset + index + 1);
+			return `${TOOL_RESULT_INDENT}${FG_LNUM}${" ".repeat(Math.max(0, nw - lineNo.length))}${lineNo}${RST} ${FG_RULE}│${RST} ${line}${RST}`;
+		})
+		.join("\n");
+	const divider = skillName ? `${TOOL_RESULT_INDENT}${FG_RULE}${"─".repeat(Math.max(1, tw - 1))}${RST}\n` : "";
+	return `${TOOL_RESULT_INDENT}${header}\n${divider}${padded}`;
 }
 
 function getText(result: Result): string {

@@ -47,11 +47,12 @@ interface ReadToolHarness {
 			isError: boolean;
 			state: Record<string, never>;
 			expanded: boolean;
+			invalidate?: () => void;
 		},
 	): MockText;
 }
 
-function loadReadTool(content: string): ReadToolHarness {
+function loadReadTool(content: string, renderContent?: (...args: any[]) => Promise<string>): ReadToolHarness {
 	let tool: ReadToolHarness | undefined;
 	const pi = {
 		registerTool: (definition: ToolDefinition) => {
@@ -64,7 +65,7 @@ function loadReadTool(content: string): ReadToolHarness {
 		execute: async () => ({ content: [{ type: "text", text: content }] satisfies ToolContent[], details: {} }),
 	};
 
-	registerReadTool(pi, process.cwd(), undefined, sdkTool, MockText);
+	registerReadTool(pi, process.cwd(), undefined, sdkTool, MockText, renderContent);
 	if (!tool) throw new Error("read tool was not registered");
 	return tool;
 }
@@ -105,10 +106,9 @@ describe("read title adjacency (no blank row below the title)", () => {
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const infoIdx = lines.findIndex((l) => l.includes("ctrl+o to expand"));
-		expect(titleIdx).toBeGreaterThanOrEqual(0);
+		expect(titleIdx).toBe(0);
 		expect(infoIdx).toBe(titleIdx + 1);
-		expect(visible(lines[0] ?? "")).toBe(""); // top padding preserved
-		expect(visible(lines.at(-1) ?? "")).toBe(""); // footer spacing preserved
+		expect(visible(lines.at(-1) ?? "")).not.toBe("");
 	});
 
 	it("expanded: the rule line sits directly below the read title", async () => {
@@ -116,26 +116,25 @@ describe("read title adjacency (no blank row below the title)", () => {
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const ruleIdx = lines.findIndex((l, i) => i > titleIdx && l.includes("─"));
-		expect(titleIdx).toBeGreaterThanOrEqual(0);
+		expect(titleIdx).toBe(0);
 		expect(ruleIdx).toBe(titleIdx + 1);
-		expect(visible(lines.at(-1) ?? "")).toBe(""); // footer spacing preserved
+		expect(visible(lines.at(-1) ?? "")).not.toBe("");
 	});
 
 	it("collapsed skill header is the final row (no trailing blank)", async () => {
 		const rendered = await renderSkill(skillContent, false);
 		const lines = rendered.getText().split("\n");
-		expect(lines).toHaveLength(2);
-		expect(visible(lines[0] ?? "")).toBe(""); // top padding preserved
-		expect(visible(lines[1] ?? "")).toContain("[skill]");
+		expect(lines).toHaveLength(1);
+		expect(visible(lines[0] ?? "")).toContain("[skill]");
 	});
 
 	it("expanded skill: the divider sits directly below the skill header", async () => {
 		const rendered = await renderSkill(skillContent, true);
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("[skill]"));
-		expect(titleIdx).toBeGreaterThanOrEqual(0);
+		expect(titleIdx).toBe(0);
 		expect(visible(lines[titleIdx + 1] ?? "")).toContain("─");
-		expect(visible(lines.at(-1) ?? "")).toBe(""); // footer spacing preserved
+		expect(visible(lines.at(-1) ?? "")).not.toBe("");
 	});
 
 	it("async highlight keeps the body directly below the plain-file title", async () => {
@@ -144,9 +143,9 @@ describe("read title adjacency (no blank row below the title)", () => {
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const bodyIdx = lines.findIndex((l, i) => i > titleIdx && l.includes("│"));
-		expect(titleIdx).toBeGreaterThanOrEqual(0);
+		expect(titleIdx).toBe(0);
 		expect(bodyIdx).toBe(titleIdx + 1);
-		expect(visible(lines.at(-1) ?? "")).toBe(""); // footer spacing preserved
+		expect(visible(lines.at(-1) ?? "")).not.toBe("");
 	});
 
 	it("async highlight keeps the divider directly below the skill header", async () => {
@@ -156,6 +155,56 @@ describe("read title adjacency (no blank row below the title)", () => {
 		const titleIdx = lines.findIndex((l) => l.includes("[skill]"));
 		expect(titleIdx).toBeGreaterThanOrEqual(0);
 		expect(visible(lines[titleIdx + 1] ?? "")).toContain("─");
+	});
+
+	it("invalidates once after highlighting without recursively re-rendering", async () => {
+		const renderContent = vi.fn(async () => "highlighted body");
+		const tool = loadReadTool(plainFile, renderContent);
+		const result = await tool.execute("t1", { path: "/tmp/project/src/index.ts" }, undefined, undefined, {});
+		const component = new MockText();
+		const state: Record<string, never> = {};
+		let context: any;
+		const invalidate = vi.fn(() => {
+			if (invalidate.mock.calls.length === 1) tool.renderResult(result, {}, mockTheme, context);
+		});
+		context = { lastComponent: component, isError: false, state, expanded: true, invalidate };
+
+		tool.renderResult(result, {}, mockTheme, context);
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+		expect(renderContent).toHaveBeenCalledOnce();
+		expect(invalidate).toHaveBeenCalledOnce();
+		expect(component.getText()).toContain("highlighted body");
+	});
+
+	it("does not apply stale highlighting after the result is collapsed", async () => {
+		let resolveHighlight!: (value: string) => void;
+		const pendingHighlight = new Promise<string>((resolve) => {
+			resolveHighlight = resolve;
+		});
+		const tool = loadReadTool(plainFile, async () => pendingHighlight);
+		const result = await tool.execute("t1", { path: "/tmp/project/src/index.ts" }, undefined, undefined, {});
+		const component = new MockText();
+		const state: Record<string, never> = {};
+
+		tool.renderResult(result, {}, mockTheme, {
+			lastComponent: component,
+			isError: false,
+			state,
+			expanded: true,
+		});
+		tool.renderResult(result, {}, mockTheme, {
+			lastComponent: component,
+			isError: false,
+			state,
+			expanded: false,
+		});
+
+		resolveHighlight("stale highlighted body");
+		await pendingHighlight;
+		await Promise.resolve();
+		expect(component.getText()).toContain("ctrl+o to expand");
+		expect(component.getText()).not.toContain("stale highlighted body");
 	});
 });
 

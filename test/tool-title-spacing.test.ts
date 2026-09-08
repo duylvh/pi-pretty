@@ -89,12 +89,12 @@ function stackedRows(call: { getText(): string }, result: { getText(): string })
 	return [...callRows, ...(result.getText() ? result.getText().split("\n") : [])].map(stripAnsi);
 }
 
-describe("tool title spacing (no blank row between title and result)", () => {
+describe("tool title/result spacing (no outer blank rows)", () => {
 	beforeEach(() => {
 		process.stdout.columns = 100;
 	});
 
-	it("bash collapsed: info line sits directly below the title, footer blank retained", () => {
+	it("bash collapsed: info line follows the title without outer blank rows", () => {
 		const tool = loadTools().get("bash");
 		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(false));
 		const result = tool.renderResult(
@@ -104,13 +104,12 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(false),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[0]?.trim()).toBe(""); // top padding preserved
-		expect(rows[1]?.trim()).toBe("$ echo out");
-		expect(rows[2]).toContain("1 lines"); // info directly below title
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toBe("$ echo out");
+		expect(rows[1]).toContain("1 lines"); // info directly below title
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 
-	it("bash expanded: info → blank → body internal spacing preserved, no gap below title", () => {
+	it("bash expanded: internal info/body spacing is preserved without outer blank rows", () => {
 		const tool = loadTools().get("bash");
 		const call = tool.renderCall({ command: "echo out" }, mockTheme, ctx(true));
 		const result = tool.renderResult(
@@ -120,11 +119,11 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(true),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toBe("$ echo out");
-		expect(rows[2]).toContain("1 lines");
-		expect(rows[3]?.trim()).toBe(""); // info → body separator (not title padding)
-		expect(rows[4]).toContain("out");
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toBe("$ echo out");
+		expect(rows[1]).toContain("1 lines");
+		expect(rows[2]?.trim()).toBe(""); // info → body separator
+		expect(rows[3]).toContain("out");
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 
 	it("grep collapsed: line count sits directly below the title", () => {
@@ -140,9 +139,9 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(false),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toContain("✱ grep");
-		expect(rows[2]).toContain("1 lines"); // directly below title
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toContain("✱ grep");
+		expect(rows[1]).toContain("1 lines"); // directly below title
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 
 	it("find expanded: match count sits directly below the title", () => {
@@ -158,9 +157,9 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(true),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toContain("✱ find");
-		expect(rows[2]).toContain("2 files"); // directly below title
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toContain("✱ find");
+		expect(rows[1]).toContain("2 files"); // directly below title
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 
 	it("find with no matches: zero-count line sits directly below the title", () => {
@@ -173,8 +172,8 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(false),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toContain("✱ find");
-		expect(rows[2]).toContain("0 files"); // directly below title
+		expect(rows[0]?.trim()).toContain("✱ find");
+		expect(rows[1]).toContain("0 files"); // directly below title
 	});
 
 	it("find fallback (no details): preview text sits directly below the title", () => {
@@ -182,8 +181,8 @@ describe("tool title spacing (no blank row between title and result)", () => {
 		const call = tool.renderCall({ pattern: "*.ts" }, mockTheme, ctx(false));
 		const result = tool.renderResult({ content: [{ type: "text", text: "src/a.ts" }] }, {}, mockTheme, ctx(false));
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toContain("✱ find");
-		expect(rows[2]).toContain("src/a.ts"); // directly below title
+		expect(rows[0]?.trim()).toContain("✱ find");
+		expect(rows[1]).toContain("src/a.ts"); // directly below title
 	});
 
 	it("ls collapsed: entry count sits directly below the title", () => {
@@ -196,9 +195,9 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(false),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toBe("ls src");
-		expect(rows[2]).toContain("1 entries"); // directly below title
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toBe("ls src");
+		expect(rows[1]).toContain("1 entries"); // directly below title
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 
 	it("ls expanded: entry count sits directly below the title", () => {
@@ -211,8 +210,8 @@ describe("tool title spacing (no blank row between title and result)", () => {
 			ctx(true),
 		);
 		const rows = stackedRows(call, result);
-		expect(rows[1]?.trim()).toBe("ls src");
-		expect(rows[2]).toContain("1 entries"); // directly below title
-		expect(rows.at(-1)?.trim()).toBe(""); // footer spacing preserved
+		expect(rows[0]?.trim()).toBe("ls src");
+		expect(rows[1]).toContain("1 entries"); // directly below title
+		expect(rows.at(-1)?.trim()).not.toBe("");
 	});
 });

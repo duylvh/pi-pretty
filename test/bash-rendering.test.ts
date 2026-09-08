@@ -1,7 +1,8 @@
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import piPrettyExtension from "../src/index.js";
+import { registerBashTool } from "../src/tools/bash.js";
 
 class MockText {
 	private text = "";
@@ -83,6 +84,27 @@ function loadBashTool() {
 	return loadTools().get("bash");
 }
 
+describe("bash execution", () => {
+	it("preserves rejected SDK executions as tool failures", async () => {
+		const failure = new Error("command failed");
+		const registerTool = vi.fn();
+		registerBashTool(
+			{ registerTool } as any,
+			process.cwd(),
+			undefined,
+			{
+				description: "bash",
+				parameters: {},
+				execute: vi.fn().mockRejectedValue(failure),
+			} as any,
+			MockText,
+		);
+
+		const tool = registerTool.mock.calls[0]?.[0];
+		await expect(tool.execute("t1", { command: "false" }, undefined, undefined, {})).rejects.toBe(failure);
+	});
+});
+
 describe("bash renderCall expansion", () => {
 	beforeEach(() => {
 		process.stdout.columns = 100;
@@ -122,9 +144,8 @@ describe("bash renderCall expansion", () => {
 				invalidate: () => {},
 			});
 			const lines = stripAnsi(rendered.getText()).split("\n");
-			expect(lines).toHaveLength(2);
-			expect(lines[0]?.trim(), name).toBe("");
-			expect(lines[1]?.trim(), name).not.toBe("");
+			expect(lines).toHaveLength(1);
+			expect(lines[0]?.trim(), name).not.toBe("");
 		}
 	});
 
@@ -233,7 +254,7 @@ describe("bash renderCall expansion", () => {
 			});
 
 			const lines = stripAnsi(rendered.getText()).split("\n");
-			expect(lines[1]).toMatch(/^ \$ false/);
+			expect(lines[0]).toMatch(/^ \$ false/);
 			expect(rendered.getText()).toContain("\x1b[31m");
 		});
 	});
@@ -256,7 +277,7 @@ describe("bash renderCall expansion", () => {
 			const collapsedLines = stripAnsi(collapsed.getText()).split("\n");
 			expect(collapsedLines[0]).toContain("3 lines · ctrl+o to expand");
 			expect(collapsedLines[0]).not.toContain("exit");
-			expect(collapsedLines[1].trim()).toBe("");
+			expect(collapsedLines.at(-1)?.trim()).not.toBe("");
 			expect(collapsedLines.some((l) => l.includes("first error"))).toBe(false);
 
 			const expanded = bashTool.renderResult(
@@ -275,7 +296,7 @@ describe("bash renderCall expansion", () => {
 			expect(lines[1].trim()).toBe("");
 			expect(lines[2]).toMatch(/^ first error/);
 			expect(lines[4]).toMatch(/^ second error/);
-			expect(lines.at(-1)?.trim()).toBe("");
+			expect(lines.at(-1)?.trim()).not.toBe("");
 		});
 	});
 

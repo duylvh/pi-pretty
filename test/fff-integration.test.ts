@@ -440,6 +440,14 @@ describe("piPrettyExtension integration", () => {
 			const r = await tools.get("find")!.execute("t1", { pattern: "*.ts" }, null, null, {});
 			expect(r.details.matchCount).toBe(3);
 		});
+
+		it("does not count the SDK no-results sentinel as a file", async () => {
+			findExec.mockResolvedValue({ content: [{ type: "text", text: "No files found matching pattern" }] });
+			load(false);
+			const r = await tools.get("find")!.execute("t1", { pattern: "*.missing" }, null, null, {});
+			expect(r.details.text).toBe("");
+			expect(r.details.matchCount).toBe(0);
+		});
 	});
 
 	// ---- grep: SDK fallback (no FFF) -----------------------------------
@@ -470,6 +478,14 @@ describe("piPrettyExtension integration", () => {
 			expect(r.content[0].text).toBe("a.ts:1:TODO\na.ts:5:TODO\nb.ts:10:TODO");
 			expect(r.details.text).toBe("a.ts:1:TODO\na.ts:5:TODO\nb.ts:10:TODO");
 			expect(r.details.matchCount).toBe(3);
+		});
+
+		it("does not count the SDK no-results sentinel as a line", async () => {
+			grepExec.mockResolvedValue({ content: [{ type: "text", text: "No matches found" }] });
+			load(false);
+			const r = await tools.get("grep")!.execute("t1", { pattern: "missing" }, null, null, {});
+			expect(r.details.text).toBe("");
+			expect(r.details.matchCount).toBe(0);
 		});
 	});
 
@@ -559,6 +575,15 @@ describe("piPrettyExtension integration", () => {
 			expect(r.content[0].text).toContain("src/index.ts:42:const x = 1;");
 		});
 
+		it("does not count empty FFF results as a line", async () => {
+			await loadWithFFF({
+				grep: vi.fn().mockReturnValue({ ok: true, value: { items: [], totalMatched: 0, nextCursor: null } }),
+			});
+			const r = await tools.get("grep")!.execute("t1", { pattern: "missing" }, null, null, {});
+			expect(r.details.text).toBe("");
+			expect(r.details.matchCount).toBe(0);
+		});
+
 		it("sanitizes CRLF in FFF grep output without extra records", async () => {
 			await loadWithFFF({
 				grep: vi.fn().mockReturnValue({
@@ -580,6 +605,21 @@ describe("piPrettyExtension integration", () => {
 			await loadWithFFF({ grep });
 			await tools.get("grep")!.execute("t1", { pattern: "foo", literal: true }, null, null, {});
 			expect(grep).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "plain" }));
+		});
+
+		it("uses SDK grep for explicit ignoreCase", async () => {
+			const grep = vi.fn().mockReturnValue({ ok: true, value: { items: [], totalMatched: 0, nextCursor: null } });
+			await loadWithFFF({ grep });
+			await tools.get("grep")!.execute("t1", { pattern: "foo", ignoreCase: true }, null, null, {});
+			expect(grep).not.toHaveBeenCalled();
+			expect(grepExec).toHaveBeenCalledOnce();
+		});
+
+		it("disables FFF smart-case for SDK-compatible default matching", async () => {
+			const grep = vi.fn().mockReturnValue({ ok: true, value: { items: [], totalMatched: 0, nextCursor: null } });
+			await loadWithFFF({ grep });
+			await tools.get("grep")!.execute("t1", { pattern: "foo" }, null, null, {});
+			expect(grep).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ smartCase: false }));
 		});
 
 		it("no literal → mode=regex", async () => {
@@ -632,6 +672,25 @@ describe("piPrettyExtension integration", () => {
 	// ---- session lifecycle ---------------------------------------------
 
 	describe("session lifecycle", () => {
+		it("recreates the finder when a later session changes its base path", async () => {
+			const first = mkFinder();
+			const second = mkFinder();
+			const create = vi.fn()
+				.mockReturnValueOnce({ ok: true, value: first })
+				.mockReturnValueOnce({ ok: true, value: second });
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+
+			await start({}, { cwd: "/tmp/project-a" });
+			await start({}, { cwd: "/tmp/project-a" });
+			await start({}, { cwd: "/tmp/project-b" });
+
+			expect(create).toHaveBeenCalledTimes(2);
+			expect(first.destroy).toHaveBeenCalledOnce();
+			expect(create.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ basePath: "/tmp/project-a" }));
+			expect(create.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ basePath: "/tmp/project-b" }));
+		});
+
 		it("stores FFF data under a pi-pretty-specific directory", async () => {
 			const create = vi.fn().mockReturnValue({ ok: true, value: mkFinder() });
 			load(true, { FileFinder: { create } });
@@ -727,6 +786,21 @@ describe("piPrettyExtension integration", () => {
 			await start({}, { cwd: homedir(), ui: { notify } });
 
 			expect(notify).not.toHaveBeenCalled();
+		});
+
+		it("warns when the restricted scope was explicitly opted in", async () => {
+			const create = vi.fn().mockReturnValue({
+				ok: false,
+				error: RESTRICTED_FFF_ERROR,
+			});
+			const notify = vi.fn();
+			process.env.PRETTY_FFF_HOME_SCAN = "1";
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: homedir(), ui: { notify } });
+
+			expect(notify).toHaveBeenCalledOnce();
+			expect(notify.mock.calls[0]?.[0]).toContain("FFF init failed:");
 		});
 
 		it("recognizes a symlinked home path as the home restriction", async () => {

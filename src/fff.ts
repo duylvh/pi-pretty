@@ -86,6 +86,12 @@ type SharedFffState = {
 	service: FffService;
 };
 
+type FinderConfig = {
+	basePath: string;
+	enableHomeDirScanning: boolean;
+	enableFsRootScanning: boolean;
+};
+
 type GlobalWithFffService = typeof globalThis & {
 	[SHARED_FFF_SERVICE_KEY]?: SharedFffState;
 };
@@ -116,7 +122,9 @@ export class FffService {
 
 	private fffModule: typeof import("@ff-labs/fff-node") | null = null;
 	private dbDir: string | null = null;
+	private finderConfig: FinderConfig | null = null;
 	private finderPromise: Promise<void> | null = null;
+	private finderPromiseConfig: FinderConfig | null = null;
 
 	constructor(fffModule?: typeof import("@ff-labs/fff-node"), agentDir?: string) {
 		this.configure(fffModule, agentDir);
@@ -164,25 +172,45 @@ export class FffService {
 	}
 
 	async ensureFinder(cwd: string, options: FffInitOptions = DEFAULT_FFF_INIT_OPTIONS): Promise<void> {
-		if (this.finder && !this.finder.isDestroyed) return;
-		if (this.finderPromise) return this.finderPromise;
+		const requestedConfig = finderConfig(cwd, options);
 
-		const promise = this._createFinder(cwd, options);
-		this.finderPromise = promise;
-		try {
-			await promise;
-		} finally {
-			if (this.finderPromise === promise) this.finderPromise = null;
+		for (;;) {
+			if (this.finder && !this.finder.isDestroyed && sameFinderConfig(this.finderConfig, requestedConfig)) return;
+
+			const pending = this.finderPromise;
+			if (pending) {
+				const pendingConfig = this.finderPromiseConfig;
+				try {
+					await pending;
+				} catch (error) {
+					// A concurrent request for the same scope must observe the same
+					// failure. A different scope can retry after the pending attempt.
+					if (sameFinderConfig(pendingConfig, requestedConfig)) throw error;
+				}
+				continue;
+			}
+
+			if (this.finder && !this.finder.isDestroyed) this.disposeFinder();
+
+			const promise = this._createFinder(cwd, options, requestedConfig);
+			this.finderPromise = promise;
+			this.finderPromiseConfig = requestedConfig;
+			try {
+				await promise;
+				return;
+			} finally {
+				if (this.finderPromise === promise) {
+					this.finderPromise = null;
+					this.finderPromiseConfig = null;
+				}
+			}
 		}
 	}
 
-	private async _createFinder(cwd: string, options: FffInitOptions): Promise<void> {
+	private async _createFinder(cwd: string, options: FffInitOptions, config: FinderConfig): Promise<void> {
 		if (!this.fffModule) return;
 
-		if (this.finder && !this.finder.isDestroyed) {
-			this.finder.destroy();
-			this.finder = null;
-		}
+		if (this.finder && !this.finder.isDestroyed) this.disposeFinder();
 
 		const result = this.createFinder(cwd, this.dbDir, options);
 		if (!result.ok) {
@@ -197,6 +225,7 @@ export class FffService {
 		this.finder = result.value;
 		const scan = await this.finder.waitForScan(15_000);
 		this.partialIndex = scan.ok && !scan.value;
+		this.finderConfig = config;
 	}
 
 	private createFinder(
@@ -232,12 +261,16 @@ export class FffService {
 	}
 
 	destroy(): void {
-		if (this.finder && !this.finder.isDestroyed) {
-			this.finder.destroy();
-			this.finder = null;
-		}
-		this.partialIndex = false;
+		this.disposeFinder();
 		this.finderPromise = null;
+		this.finderPromiseConfig = null;
+	}
+
+	private disposeFinder(): void {
+		if (this.finder && !this.finder.isDestroyed) this.finder.destroy();
+		this.finder = null;
+		this.finderConfig = null;
+		this.partialIndex = false;
 	}
 
 	getFinder(): import("@ff-labs/fff-node").FileFinder | null {
@@ -247,6 +280,22 @@ export class FffService {
 	getCursorStore(): CursorStore {
 		return this.cursorStore;
 	}
+}
+
+function finderConfig(cwd: string, options: FffInitOptions): FinderConfig {
+	return {
+		basePath: canonicalPath(cwd),
+		enableHomeDirScanning: options.enableHomeDirScanning,
+		enableFsRootScanning: options.enableFsRootScanning,
+	};
+}
+
+function sameFinderConfig(left: FinderConfig | null, right: FinderConfig): boolean {
+	return (
+		left?.basePath === right.basePath &&
+		left.enableHomeDirScanning === right.enableHomeDirScanning &&
+		left.enableFsRootScanning === right.enableFsRootScanning
+	);
 }
 
 function isAlreadyOpenError(error: string): boolean {

@@ -33,6 +33,7 @@ export interface RenderCtxLike {
 	isError?: boolean;
 	state: Record<string, string | undefined>;
 	expanded?: boolean;
+	invalidate?: () => void;
 }
 
 export interface TextLike {

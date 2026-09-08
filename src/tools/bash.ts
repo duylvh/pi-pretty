@@ -33,22 +33,11 @@ export function registerBashTool(
 		parameters: sdkTool.parameters,
 		renderShell: "self",
 
-		execute: wrapExecuteWithMetrics(async (tid, params, sig, _upd, ctx: ExtensionContext) => {
-			try {
-				return (await sdkTool.execute(tid, params, sig, undefined, ctx)) as Result;
-			} catch (error: unknown) {
-				const msg = error instanceof Error ? error.message : String(error);
-				return {
-					content: [{ type: "text" as const, text: msg }],
-					isError: true,
-					details: {
-						_type: "bashResult",
-						text: msg,
-						exitCode: 1,
-						command: String((params as any).command ?? ""),
-					} as BashDetails,
-				};
-			}
+		execute: wrapExecuteWithMetrics(async (tid, params, sig, upd, ctx: ExtensionContext) => {
+			// Let the host derive the tool-error flag from the rejected execution.
+			// AgentToolResult has no portable `isError` field, so converting a bash
+			// failure into a successful-looking result hides the failure from the model.
+			return (await sdkTool.execute(tid, params, sig, upd, ctx)) as Result;
 		}),
 
 		renderCall(args: any, theme: ThemeLike, ctx: RenderCtxLike) {
@@ -66,7 +55,7 @@ export function registerBashTool(
 						: rawCmd;
 			const commandLabel = theme.fg(ctx.isError ? "error" : "toolTitle", theme.bold(`$ ${cmd}`));
 			text.setText(
-				fillToolBackground(`\n${TOOL_RESULT_INDENT}${commandLabel}${t}`, undefined, ctx.expanded ? undefined : tw),
+				fillToolBackground(`${TOOL_RESULT_INDENT}${commandLabel}${t}`, undefined, ctx.expanded ? undefined : tw),
 			);
 			return text;
 		},
@@ -103,11 +92,11 @@ export function registerBashTool(
 				const rw = termWidth();
 
 				const renderFn = (w: number) => {
-					if (!ctx.expanded) return fillToolBackground(`${header}\n`, undefined, w);
-					if (!output.trim()) return fillToolBackground(`${header}\n`, undefined, w);
+					if (!ctx.expanded) return fillToolBackground(header, undefined, w);
+					if (!output.trim()) return fillToolBackground(header, undefined, w);
 					const show = output.split("\n");
 					const out = [header, "", ...show.map((line: string) => `${TOOL_RESULT_INDENT}${line}`)];
-					return fillToolBackground(`${out.join("\n")}\n`, undefined, w);
+					return fillToolBackground(out.join("\n"), undefined, w);
 				};
 
 				text.setText(renderFn(rw));

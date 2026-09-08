@@ -40,7 +40,10 @@ export function registerGrepTool(
 			const limit = typeof p.limit === "number" ? p.limit : 200;
 			const literal = p.literal === true;
 
-			if (fffService?.isAvailable && !path && !glob) {
+			// FFF exposes smart-case, not the SDK's explicit ignoreCase mode.
+			// Fall back when callers request case-insensitive matching so the SDK
+			// remains the semantic source of truth for that option.
+			if (fffService?.isAvailable && !path && !glob && p.ignoreCase !== true) {
 				try {
 					const fff = fffService.getFinder();
 					if (!fff) throw new Error("FFF finder not available");
@@ -48,6 +51,7 @@ export function registerGrepTool(
 					const grepResult = fff.grep(pattern, {
 						pageSize: effectiveLimit,
 						mode: literal ? "plain" : "regex",
+						smartCase: false,
 						beforeContext: context,
 						afterContext: context,
 					});
@@ -68,7 +72,7 @@ export function registerGrepTool(
 							content: [{ type: "text" as const, text }],
 							details: {
 								_type: "grepResult",
-								text,
+								text: items.length > 0 ? text : "",
 								pattern,
 								matchCount: items.length,
 							} as GrepDetails,
@@ -88,11 +92,12 @@ export function registerGrepTool(
 					.filter((c) => c.type === "text")
 					.map((c) => c.text)
 					.join("\n") ?? "";
+			const normalizedText = tc.trim() === "No matches found" ? "" : tc;
 			result.details = {
 				_type: "grepResult",
-				text: tc,
+				text: normalizedText,
 				pattern,
-				matchCount: tc ? tc.trim().split("\n").filter(Boolean).length : 0,
+				matchCount: normalizedText ? normalizedText.trim().split("\n").filter(Boolean).length : 0,
 			} as GrepDetails;
 			return result;
 		}),
@@ -111,7 +116,7 @@ export function registerGrepTool(
 			if (limit !== undefined && limit !== null) out += theme.fg("dim", ` limit ${limit}`);
 			if (literal) out += theme.fg("dim", ` (literal)`);
 			if (caseInsensitive) out += theme.fg("dim", ` (case-insensitive)`);
-			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}`, ctx.isError ? BG_ERROR : undefined));
+			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${out}`, ctx.isError ? BG_ERROR : undefined));
 			return text;
 		},
 
@@ -136,7 +141,7 @@ export function registerGrepTool(
 				if (!ctx.expanded) {
 					text.setText(
 						fillToolBackground(
-							`${TOOL_RESULT_INDENT}${FG_DIM}${lines.length} lines — ctrl+o to expand${RST}\n`,
+							`${TOOL_RESULT_INDENT}${FG_DIM}${lines.length} lines — ctrl+o to expand${RST}`,
 							ctx.isError ? BG_ERROR : undefined,
 						),
 					);
@@ -153,7 +158,7 @@ export function registerGrepTool(
 				if (remaining > 0) {
 					out.push(theme.fg("muted", `… (${remaining} more ${remaining === 1 ? "line" : "lines"}, to expand)`));
 				}
-				const body = `${out.map((l) => `${TOOL_RESULT_INDENT}${l}`).join("\n")}\n\n`;
+				const body = out.map((l) => `${TOOL_RESULT_INDENT}${l}`).join("\n");
 				text.setText(fillToolBackground(body, ctx.isError ? BG_ERROR : undefined));
 				return text;
 			}

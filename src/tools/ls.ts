@@ -51,7 +51,7 @@ export function registerLsTool(
 			let out = theme.fg("toolTitle", theme.bold("ls"));
 			if (path) out += ` ${theme.fg("accent", path)}`;
 			if (limit !== undefined && limit !== null) out += theme.fg("toolOutput", ` (limit ${limit})`);
-			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}`, ctx.isError ? BG_ERROR : undefined));
+			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${out}`, ctx.isError ? BG_ERROR : undefined));
 			return text;
 		},
 
@@ -68,7 +68,7 @@ export function registerLsTool(
 				if (!ctx.expanded) {
 					text.setText(
 						fillToolBackground(
-							`${TOOL_RESULT_INDENT}${FG_DIM}${d.entryCount} entries — ctrl+o to expand${RST}${renderToolMetrics(result)}\n`,
+							`${TOOL_RESULT_INDENT}${FG_DIM}${d.entryCount} entries — ctrl+o to expand${RST}${renderToolMetrics(result)}`,
 						),
 					);
 					return text;
@@ -79,7 +79,7 @@ export function registerLsTool(
 					.join("\n");
 				text.setText(
 					fillToolBackground(
-						`${TOOL_RESULT_INDENT}${FG_DIM}${d.entryCount} entries${RST}${renderToolMetrics(result)}\n${rendered}\n`,
+						`${TOOL_RESULT_INDENT}${FG_DIM}${d.entryCount} entries${RST}${renderToolMetrics(result)}\n${rendered}`,
 					),
 				);
 				return text;
