@@ -6,10 +6,43 @@
  * Graceful fallback: if FFF is not installed or fails, tools degrade to SDK.
  */
 
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, parse, resolve } from "node:path";
 
 import type { FileFinder as FffFileFinder, GrepCursor } from "@ff-labs/fff-node";
+
+export interface FffInitOptions {
+	enableHomeDirScanning: boolean;
+	enableFsRootScanning: boolean;
+}
+
+export type FffInitFailureKind = "restricted-base-path" | "native";
+export type FffRestrictedScanScope = "home" | "root";
+
+export class FffInitError extends Error {
+	readonly kind: FffInitFailureKind;
+	readonly restrictedScope: FffRestrictedScanScope | undefined;
+
+	constructor(kind: FffInitFailureKind, message: string, restrictedScope?: FffRestrictedScanScope) {
+		super(message);
+		this.name = "FffInitError";
+		this.kind = kind;
+		this.restrictedScope = restrictedScope;
+	}
+}
+
+export function isFffRestrictedBasePathError(error: unknown, options: FffInitOptions): boolean {
+	if (!(error instanceof FffInitError) || error.kind !== "restricted-base-path") return false;
+	if (error.restrictedScope === "home") return !options.enableHomeDirScanning;
+	if (error.restrictedScope === "root") return !options.enableFsRootScanning;
+	return false;
+}
+
+const DEFAULT_FFF_INIT_OPTIONS: FffInitOptions = {
+	enableHomeDirScanning: false,
+	enableFsRootScanning: false,
+};
 
 // ---------------------------------------------------------------------------
 // Cursor store — pagination cursors for grep
@@ -130,11 +163,11 @@ export class FffService {
 		}
 	}
 
-	async ensureFinder(cwd: string): Promise<void> {
+	async ensureFinder(cwd: string, options: FffInitOptions = DEFAULT_FFF_INIT_OPTIONS): Promise<void> {
 		if (this.finder && !this.finder.isDestroyed) return;
 		if (this.finderPromise) return this.finderPromise;
 
-		const promise = this._createFinder(cwd);
+		const promise = this._createFinder(cwd, options);
 		this.finderPromise = promise;
 		try {
 			await promise;
@@ -143,7 +176,7 @@ export class FffService {
 		}
 	}
 
-	private async _createFinder(cwd: string): Promise<void> {
+	private async _createFinder(cwd: string, options: FffInitOptions): Promise<void> {
 		if (!this.fffModule) return;
 
 		if (this.finder && !this.finder.isDestroyed) {
@@ -151,9 +184,14 @@ export class FffService {
 			this.finder = null;
 		}
 
-		const result = this.createFinder(cwd, this.dbDir);
+		const result = this.createFinder(cwd, this.dbDir, options);
 		if (!result.ok) {
-			throw new Error(`FFF init failed: ${result.error}`);
+			const kind = isRestrictedBasePathMessage(result.error) ? "restricted-base-path" : "native";
+			throw new FffInitError(
+				kind,
+				result.error,
+				kind === "restricted-base-path" ? restrictedScanScope(cwd) : undefined,
+			);
 		}
 
 		this.finder = result.value;
@@ -164,13 +202,19 @@ export class FffService {
 	private createFinder(
 		cwd: string,
 		dbDir: string | null,
+		options: FffInitOptions,
 	): ReturnType<typeof import("@ff-labs/fff-node").FileFinder.create> {
 		if (!this.fffModule) throw new Error("FFF module is not loaded");
-		const result = this.fffModule.FileFinder.create({
+		const commonOptions = {
 			basePath: cwd,
+			aiMode: true,
+			enableHomeDirScanning: options.enableHomeDirScanning,
+			enableFsRootScanning: options.enableFsRootScanning,
+		};
+		const result = this.fffModule.FileFinder.create({
+			...commonOptions,
 			frecencyDbPath: dbDir ? join(dbDir, "frecency.mdb") : "",
 			historyDbPath: dbDir ? join(dbDir, "history.mdb") : "",
-			aiMode: true,
 		});
 		if (result.ok || !isAlreadyOpenError(result.error) || !dbDir) return result;
 
@@ -181,10 +225,9 @@ export class FffService {
 			return result;
 		}
 		return this.fffModule.FileFinder.create({
-			basePath: cwd,
+			...commonOptions,
 			frecencyDbPath: join(isolatedDir, "frecency.mdb"),
 			historyDbPath: join(isolatedDir, "history.mdb"),
-			aiMode: true,
 		});
 	}
 
@@ -208,4 +251,23 @@ export class FffService {
 
 function isAlreadyOpenError(error: string): boolean {
 	return /environment already open/i.test(error);
+}
+
+function isRestrictedBasePathMessage(error: string): boolean {
+	return /certain FFF features in a file system root or home directories/i.test(error);
+}
+
+function restrictedScanScope(cwd: string): FffRestrictedScanScope | undefined {
+	const basePath = canonicalPath(cwd);
+	if (basePath === parse(basePath).root) return "root";
+	if (basePath === canonicalPath(homedir())) return "home";
+	return undefined;
+}
+
+function canonicalPath(path: string): string {
+	try {
+		return realpathSync.native(path);
+	} catch {
+		return resolve(path);
+	}
 }

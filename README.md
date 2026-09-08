@@ -121,6 +121,16 @@ Use them when:
 - `find` results are frecency-aware, so files you touch more often can bubble up earlier.
 - `grep` can show a cursor notice when more results are available.
 - If you see a partial index warning, let the session settle or run `/fff-rescan`.
+- When Pi starts in the exact home directory or filesystem root, FFF stays disabled by default and `find`/`grep` use Pi's SDK fallback instead of interrupting startup. Broader indexing requires explicit opt-in below.
+
+To opt into home or root indexing for a session:
+
+```bash
+PRETTY_FFF_HOME_SCAN=1 pi
+PRETTY_FFF_ROOT_SCAN=1 pi
+```
+
+The equivalent Pi flags are `--pretty-fff-home-scan` and `--pretty-fff-root-scan`. Root scanning is intentionally never enabled by default because it can watch a very large filesystem and expose unrelated files to the agent.
 
 ## Configuration
 
@@ -141,6 +151,10 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 	"maxHlChars": 80000,
 	"maxPreviewLines": 80,
 	"cacheLimit": 128,
+	"fff": {
+		"enableHomeScanning": false,
+		"enableRootScanning": false
+	},
 	"workingIndicator": {
 		"text": ["Working…", "Thinking…"]
 	}
@@ -158,6 +172,8 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 | `maxHlChars` | positive int | `PRETTY_MAX_HL_CHARS` | `80000` |
 | `maxPreviewLines` | positive int | `PRETTY_MAX_PREVIEW_LINES` | `80` |
 | `cacheLimit` | positive int | `PRETTY_CACHE_LIMIT` | `128` |
+| `fff.enableHomeScanning` | boolean | `PRETTY_FFF_HOME_SCAN` (`1`/`0`) | `false` |
+| `fff.enableRootScanning` | boolean | `PRETTY_FFF_ROOT_SCAN` (`1`/`0`) | `false` |
 | `workingIndicator.enabled` | boolean | `PRETTY_WORKING_INDICATOR` (`on`/`off`) | `true` |
 | `workingIndicator.text` | string or string[] (phrases rotated per sweep; env accepts comma-separated) | `PRETTY_WORKING_INDICATOR_TEXT` | `["Working…"]` |
 | `workingIndicator.mode` | `shimmer` \| `kitt` \| `static` | `PRETTY_WORKING_INDICATOR_MODE` | `shimmer` |
@@ -170,6 +186,7 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 | `thinkingIndicator.enabled` | boolean | `PRETTY_THINKING_INDICATOR` (`on`/`off`) | `true` |
 
 - Config values take priority over theme-provided backgrounds (`toolBg` / `toolErrorBg`).
+- Precedence for FFF scan scope is CLI flag > environment variable > `pi-pretty.json` > safe default (`false`).
 - All options except `background.*` are read once at startup; restart pi to apply changes to them (`background.*` applies live).
 - To override the config directory, set `PRETTY_CONFIG_DIR` env var.
 

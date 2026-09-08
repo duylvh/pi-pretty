@@ -12,6 +12,10 @@
 	"maxHlChars": 80000,
 	"maxPreviewLines": 80,
 	"cacheLimit": 128,
+	"fff": {
+		"enableHomeScanning": false,
+		"enableRootScanning": false
+	},
 	"workingIndicator": {
 		"enabled": true,
 		"text": [

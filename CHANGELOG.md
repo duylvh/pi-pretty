@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- FFF no longer surfaces a startup error when Pi launches from the exact home directory or filesystem root. It now falls back to SDK-backed `find`/`grep`; home and root indexing require explicit opt-in via `pi-pretty.json`, environment variables, or CLI flags.
+- FFF initialization failures no longer duplicate the `FFF init failed:` prefix; unexpected failures are reported once as warnings.
+
 ## [0.6.26] - 2026-09-05
 
 ### Added

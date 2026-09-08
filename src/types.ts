@@ -4,6 +4,7 @@
 
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type { FffInitOptions } from "./fff.js";
 
 // ---------------------------------------------------------------------------
 // Re-export FFF types needed by tools
@@ -168,7 +169,7 @@ export interface FffServiceWithCursor extends FffServiceLike {
 
 /** FFF lifecycle interface (used by session lifecycle code). */
 export interface FffService extends FffServiceWithCursor {
-	ensureFinder(cwd: string): Promise<void>;
+	ensureFinder(cwd: string, options?: FffInitOptions): Promise<void>;
 	destroy(): void;
 	isModuleLoaded(): boolean;
 	tryLoadModule(): Promise<boolean>;

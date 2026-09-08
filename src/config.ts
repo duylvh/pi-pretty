@@ -86,6 +86,18 @@ export interface ThinkingIndicatorConfig {
 	enabled?: boolean;
 }
 
+export interface FffConfig {
+	/** Allow FFF to index the user's home directory when Pi starts there. */
+	enableHomeScanning?: boolean;
+	/** Allow FFF to index the filesystem root when Pi starts there. */
+	enableRootScanning?: boolean;
+}
+
+export interface FffScanSettings {
+	enableHomeScanning: boolean;
+	enableRootScanning: boolean;
+}
+
 export interface PrettyConfig {
 	background?: {
 		tool?: string;
@@ -100,6 +112,7 @@ export interface PrettyConfig {
 	cacheLimit?: number;
 	workingIndicator?: WorkingIndicatorConfig;
 	thinkingIndicator?: ThinkingIndicatorConfig;
+	fff?: FffConfig;
 }
 
 /** Normalize a comma-separated env value or JSON array into tool names. */
@@ -148,6 +161,14 @@ export function loadConfig(agentDir = getConfigDir()): PrettyConfig {
 		if (maxHlChars) config.maxHlChars = maxHlChars;
 		if (maxPreviewLines) config.maxPreviewLines = maxPreviewLines;
 		if (cacheLimit) config.cacheLimit = cacheLimit;
+		const fff = parsed.fff;
+		if (fff && typeof fff === "object") {
+			const fffConfig: FffConfig = {};
+			const src = fff as Record<string, unknown>;
+			if (typeof src.enableHomeScanning === "boolean") fffConfig.enableHomeScanning = src.enableHomeScanning;
+			if (typeof src.enableRootScanning === "boolean") fffConfig.enableRootScanning = src.enableRootScanning;
+			if (Object.keys(fffConfig).length > 0) config.fff = fffConfig;
+		}
 		const workingIndicator = parsed.workingIndicator;
 		if (workingIndicator && typeof workingIndicator === "object") {
 			const wi: WorkingIndicatorConfig = {};
@@ -183,6 +204,35 @@ export function loadConfig(agentDir = getConfigDir()): PrettyConfig {
 
 export function getConfigDir(): string | undefined {
 	return process.env.PRETTY_CONFIG_DIR ?? getDefaultAgentDir();
+}
+
+function parseBooleanOverride(value: unknown): boolean | undefined {
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === "1" || normalized === "true" || normalized === "on") return true;
+	if (normalized === "0" || normalized === "false" || normalized === "off") return false;
+	return undefined;
+}
+
+export function resolveFffScanSettings(
+	config: Pick<PrettyConfig, "fff">,
+	flags: {
+		enableHomeScanning?: boolean | string;
+		enableRootScanning?: boolean | string;
+	} = {},
+	env: NodeJS.ProcessEnv = process.env,
+): FffScanSettings {
+	const resolve = (
+		flagValue: boolean | string | undefined,
+		envName: string,
+		configValue: boolean | undefined,
+	): boolean => parseBooleanOverride(flagValue) ?? parseBooleanOverride(env[envName]) ?? configValue ?? false;
+
+	return {
+		enableHomeScanning: resolve(flags.enableHomeScanning, "PRETTY_FFF_HOME_SCAN", config.fff?.enableHomeScanning),
+		enableRootScanning: resolve(flags.enableRootScanning, "PRETTY_FFF_ROOT_SCAN", config.fff?.enableRootScanning),
+	};
 }
 
 /**

@@ -21,8 +21,15 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import * as hostSdk from "@earendil-works/pi-coding-agent";
 import { createFffAutocompleteProvider } from "./autocomplete.js";
-import { applyConfig, getDefaultAgentDir, loadConfig, normalizeToolList, resolveToolSets } from "./config.js";
-import { type FffService, getSharedFffService } from "./fff.js";
+import {
+	applyConfig,
+	getDefaultAgentDir,
+	loadConfig,
+	normalizeToolList,
+	resolveFffScanSettings,
+	resolveToolSets,
+} from "./config.js";
+import { type FffInitOptions, type FffService, getSharedFffService, isFffRestrictedBasePathError } from "./fff.js";
 import { registerBashTool } from "./tools/bash.js";
 import { registerFindTool } from "./tools/find.js";
 import { registerGrepTool } from "./tools/grep.js";
@@ -63,6 +70,22 @@ export type { PiPrettyDeps };
 export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrettyDeps): Promise<void> {
 	const config = loadConfig();
 	applyConfig(config);
+	pi.registerFlag?.("pretty-fff-home-scan", {
+		description: "Allow FFF to index the home directory when Pi starts there",
+		type: "boolean",
+	});
+	pi.registerFlag?.("pretty-fff-root-scan", {
+		description: "Allow FFF to index the filesystem root when Pi starts there",
+		type: "boolean",
+	});
+	const fffScanSettings = resolveFffScanSettings(config, {
+		enableHomeScanning: pi.getFlag?.("pretty-fff-home-scan"),
+		enableRootScanning: pi.getFlag?.("pretty-fff-root-scan"),
+	});
+	const fffInitOptions: FffInitOptions = {
+		enableHomeDirScanning: fffScanSettings.enableHomeScanning,
+		enableFsRootScanning: fffScanSettings.enableRootScanning,
+	};
 	const { disabledTools, enabledTools } = resolveToolSets(
 		envTools("PRETTY_DISABLE_TOOLS"),
 		envTools("PRETTY_ENABLE_TOOLS"),
@@ -267,7 +290,7 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 				if (!loaded) return;
 			}
 
-			await fffService.ensureFinder(ctx.cwd);
+			await fffService.ensureFinder(ctx.cwd, fffInitOptions);
 			if (fffService.partialIndex) {
 				ctx.ui?.notify?.("FFF: scan timed out — using partial index. Run /fff-rescan when ready.", "warning");
 			} else {
@@ -281,7 +304,10 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 				createFffAutocompleteProvider(current, () => fffService?.getFinder() ?? null),
 			);
 		} catch (error: unknown) {
-			ctx.ui?.notify?.(`FFF init failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+			// Root/home refusal is an intentional FFF safety boundary. FFF is an
+			// accelerator, so fall back to the SDK without interrupting startup.
+			if (isFffRestrictedBasePathError(error, fffInitOptions)) return;
+			ctx.ui?.notify?.(`FFF init failed: ${error instanceof Error ? error.message : String(error)}`, "warning");
 		}
 	});
 

@@ -9,7 +9,7 @@
  */
 
 import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -192,6 +192,9 @@ function mockToolFactory(exec: ReturnType<typeof vi.fn>) {
 }
 
 // Mock FFF finder
+const RESTRICTED_FFF_ERROR =
+	"Failed to init file picker: Can not run certain FFF features in a file system root or home directories. Consider smaller per-project directories.";
+
 function mkFinder(overrides?: Record<string, any>) {
 	return {
 		isDestroyed: false,
@@ -296,11 +299,16 @@ describe("piPrettyExtension integration", () => {
 		// Isolate from shell env so each test starts with a clean slate
 		delete process.env.PRETTY_DISABLE_TOOLS;
 		delete process.env.PRETTY_ENABLE_TOOLS;
+		delete process.env.PRETTY_FFF_HOME_SCAN;
+		delete process.env.PRETTY_FFF_ROOT_SCAN;
+		vi.stubEnv("PRETTY_CONFIG_DIR", "");
 		tools = new Map();
 		events = new Map();
 		mockPi = {
 			registerTool: vi.fn((t: any) => tools.set(t.name, t)),
 			registerCommand: vi.fn((c: any) => {}),
+			registerFlag: vi.fn(),
+			getFlag: vi.fn(),
 			on: vi.fn((e: string, h: Function) => events.set(e, h)),
 		};
 
@@ -319,6 +327,7 @@ describe("piPrettyExtension integration", () => {
 
 	afterEach(() => {
 		resetSharedFffServiceForTests();
+		vi.unstubAllEnvs();
 		vi.useRealTimers();
 	});
 
@@ -632,7 +641,126 @@ describe("piPrettyExtension integration", () => {
 			expect(create).toHaveBeenCalledWith(expect.objectContaining({
 				frecencyDbPath: "/tmp/pi-pretty-test/pi-pretty/fff/frecency.mdb",
 				historyDbPath: "/tmp/pi-pretty-test/pi-pretty/fff/history.mdb",
+				enableHomeDirScanning: false,
+				enableFsRootScanning: false,
 			}));
+		});
+
+		it("passes explicit home and root scan settings to FFF", async () => {
+			const create = vi.fn().mockReturnValue({ ok: true, value: mkFinder() });
+			process.env.PRETTY_FFF_HOME_SCAN = "1";
+			process.env.PRETTY_FFF_ROOT_SCAN = "true";
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: "/tmp/test" });
+
+			expect(create).toHaveBeenCalledWith(expect.objectContaining({
+				enableHomeDirScanning: true,
+				enableFsRootScanning: true,
+			}));
+		});
+
+		it("lets CLI flags opt into broad FFF scans", async () => {
+			const create = vi.fn().mockReturnValue({ ok: true, value: mkFinder() });
+			mockPi.getFlag.mockImplementation((name: string) => name === "pretty-fff-home-scan");
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: "/tmp/test" });
+
+			expect(mockPi.registerFlag).toHaveBeenCalledWith(
+				"pretty-fff-home-scan",
+				expect.objectContaining({ type: "boolean" }),
+			);
+			expect(mockPi.registerFlag).toHaveBeenCalledWith(
+				"pretty-fff-root-scan",
+				expect.objectContaining({ type: "boolean" }),
+			);
+			expect(create).toHaveBeenCalledWith(expect.objectContaining({
+				enableHomeDirScanning: true,
+				enableFsRootScanning: false,
+			}));
+		});
+
+		it("preserves broad-scan settings across the LMDB isolation retry", async () => {
+			const create = vi.fn()
+				.mockReturnValueOnce({ ok: false, error: "environment already open" })
+				.mockReturnValueOnce({ ok: true, value: mkFinder() });
+			process.env.PRETTY_FFF_HOME_SCAN = "1";
+			process.env.PRETTY_FFF_ROOT_SCAN = "1";
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: "/tmp/test" });
+
+			expect(create).toHaveBeenCalledTimes(2);
+			expect(create.mock.calls[0][0]).toEqual(expect.objectContaining({
+				enableHomeDirScanning: true,
+				enableFsRootScanning: true,
+			}));
+			expect(create.mock.calls[1][0]).toEqual(expect.objectContaining({
+				enableHomeDirScanning: true,
+				enableFsRootScanning: true,
+			}));
+		});
+
+		it("silently falls back when FFF rejects a broad directory", async () => {
+			const create = vi.fn().mockReturnValue({
+				ok: false,
+				error: RESTRICTED_FFF_ERROR,
+			});
+			const notify = vi.fn();
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: "/", ui: { notify } });
+
+			expect(notify).not.toHaveBeenCalled();
+		});
+
+		it("does not warn when another opt-in leaves the current broad scope disabled", async () => {
+			const create = vi.fn().mockReturnValue({
+				ok: false,
+				error: RESTRICTED_FFF_ERROR,
+			});
+			const notify = vi.fn();
+			process.env.PRETTY_FFF_ROOT_SCAN = "1";
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: homedir(), ui: { notify } });
+
+			expect(notify).not.toHaveBeenCalled();
+		});
+
+		it("recognizes a symlinked home path as the home restriction", async () => {
+			const physicalHome = mkdtempSync(join(tmpdir(), "pi-pretty-fff-home-"));
+			const homeAlias = join(tmpdir(), `pi-pretty-fff-home-alias-${Date.now()}`);
+			symlinkSync(physicalHome, homeAlias);
+			try {
+				const create = vi.fn().mockReturnValue({
+					ok: false,
+					error: RESTRICTED_FFF_ERROR,
+				});
+				const notify = vi.fn();
+				vi.stubEnv("HOME", physicalHome);
+				process.env.PRETTY_FFF_ROOT_SCAN = "1";
+				load(true, { FileFinder: { create } });
+				const start = events.get("session_start")!;
+				await start({}, { cwd: homeAlias, ui: { notify } });
+
+				expect(notify).not.toHaveBeenCalled();
+			} finally {
+				rmSync(homeAlias, { force: true });
+				rmSync(physicalHome, { recursive: true, force: true });
+			}
+		});
+
+		it("reports unexpected FFF init failures once without duplicate prefixes", async () => {
+			const create = vi.fn().mockReturnValue({ ok: false, error: "native failure" });
+			const notify = vi.fn();
+			load(true, { FileFinder: { create } });
+			const start = events.get("session_start")!;
+			await start({}, { cwd: "/tmp/test", ui: { notify } });
+
+			expect(notify).toHaveBeenCalledOnce();
+			expect(notify).toHaveBeenCalledWith("FFF init failed: native failure", "warning");
 		});
 
 		it("delayed FFF status clear does not read a stale session ctx", async () => {
