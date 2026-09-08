@@ -215,7 +215,12 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 		const editorUi = ctx.ui as unknown as EditorUiCompatibility;
 		if (typeof editorUi.setEditorComponent !== "function") return;
 		previousEditorFactory = editorUi.getEditorComponent?.();
-		const PromptEditor = createPromptEditorClass(hostCustomEditor, (icon) => ctx.ui.theme.fg("thinkingText", icon));
+		const PromptEditor = createPromptEditorClass(hostCustomEditor, (icon) => {
+			const theme = ctx.ui.theme;
+			return typeof theme.getThinkingBorderColor === "function"
+				? theme.getThinkingBorderColor(ctx.thinkingLevel ?? "off")(icon)
+				: theme.fg("thinkingText", icon);
+		});
 		editorUi.setEditorComponent((tui, theme, keybindings) => new PromptEditor(tui, theme, keybindings));
 		promptEditorInstalled = true;
 	};

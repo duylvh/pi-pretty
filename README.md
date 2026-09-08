@@ -9,7 +9,7 @@ Tool **result bodies** start **collapsed** (header + line count) and retain a bl
 
 It currently enhances:
 
-- **user messages**: a `❯` prompt icon using `userMessageText`; **live input** uses the `thinkingText` color for its icon
+- **user messages**: a `❯` prompt icon using `userMessageText`; **live input** follows the active thinking-level color for its icon
 - **`read`**: syntax-highlighted text previews with line numbers, `read docs` labels for Pi documentation reads, plus inline image rendering when the terminal supports it
 - **`bash`**: colored exit summary (`exit 0`/`exit 1`) with a preview body of command output
 - **`ls`**: Nerd Font file icons with tree-oriented rendering

@@ -66,7 +66,10 @@ describe("prompt editor", () => {
 			on: (name: string, handler: (event: unknown, ctx: unknown) => unknown) => handlers.set(name, handler),
 		};
 		const ui = {
-			theme: { fg: (color: string, text: string) => `<${color}>${text}</${color}>` },
+			theme: {
+				fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+				getThinkingBorderColor: (level: string) => (text: string) => `<${level}>${text}</${level}>`,
+			},
 			setEditorComponent: (factory: unknown) => {
 				editorFactory = factory;
 			},
@@ -74,10 +77,14 @@ describe("prompt editor", () => {
 			setToolsExpanded: () => {},
 			setWorkingVisible: () => {},
 		};
+		let thinkingLevel = "max";
 		const ctx = {
 			mode: "tui",
 			cwd: process.cwd(),
 			ui,
+			get thinkingLevel() {
+				return thinkingLevel;
+			},
 			sessionManager: { getSessionName: () => undefined },
 		};
 
@@ -89,7 +96,9 @@ describe("prompt editor", () => {
 			render(width: number): string[];
 		};
 		const editor = factory(undefined, undefined, undefined);
-		expect(editor.render(40)[1]).toContain("<thinkingText>❯</thinkingText>");
+		expect(editor.render(40)[1]).toContain("<max>❯</max>");
+		thinkingLevel = "high";
+		expect(editor.render(40)[1]).toContain("<high>❯</high>");
 
 		await handlers.get("session_shutdown")?.({}, ctx);
 		expect(editorFactory).toBeUndefined();

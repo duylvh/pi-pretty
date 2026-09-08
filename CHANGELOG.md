@@ -4,7 +4,7 @@
 
 ### Added
 
-- User messages render with a `❯` prompt icon using `userMessageText`; live input uses the `thinkingText` color for its icon.
+- User messages render with a `❯` prompt icon using `userMessageText`; live input follows Pi's active thinking-level color (`thinkingOff` through `thinkingMax`) for its icon.
 
 ### Fixed
 
