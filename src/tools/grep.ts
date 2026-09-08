@@ -5,7 +5,7 @@ import { BG_ERROR, FG_DIM, RST, resolveBaseBackground, TOOL_RESULT_INDENT } from
 import { fffFormatGrepText } from "../fff-helpers.js";
 import { normalizeLineEndings, shortPath } from "../helpers.js";
 import { NOTICE_PARTIAL_FILE_INDEX } from "../notices.js";
-import { fillToolBackground, renderToolError } from "../render.js";
+import { fillToolBackground, fillToolBody, renderToolError } from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { FffServiceWithCursor, GrepDetails, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { wrapExecuteWithMetrics } from "./metrics.js";
@@ -116,7 +116,7 @@ export function registerGrepTool(
 			if (limit !== undefined && limit !== null) out += theme.fg("dim", ` limit ${limit}`);
 			if (literal) out += theme.fg("dim", ` (literal)`);
 			if (caseInsensitive) out += theme.fg("dim", ` (case-insensitive)`);
-			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${out}`, ctx.isError ? BG_ERROR : undefined));
+			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${out}\n`, ctx.isError ? BG_ERROR : undefined));
 			return text;
 		},
 
@@ -140,7 +140,7 @@ export function registerGrepTool(
 				const lines = d.text.split("\n");
 				if (!ctx.expanded) {
 					text.setText(
-						fillToolBackground(
+						fillToolBody(
 							`${TOOL_RESULT_INDENT}${FG_DIM}${lines.length} lines — ctrl+o to expand${RST}`,
 							ctx.isError ? BG_ERROR : undefined,
 						),
@@ -159,13 +159,13 @@ export function registerGrepTool(
 					out.push(theme.fg("muted", `… (${remaining} more ${remaining === 1 ? "line" : "lines"}, to expand)`));
 				}
 				const body = out.map((l) => `${TOOL_RESULT_INDENT}${l}`).join("\n");
-				text.setText(fillToolBackground(body, ctx.isError ? BG_ERROR : undefined));
+				text.setText(fillToolBody(body, ctx.isError ? BG_ERROR : undefined));
 				return text;
 			}
 			const fc = result.content?.[0];
 			const fallback = fc && "text" in fc ? String(fc.text).slice(0, 120) : "no matches";
 			text.setText(
-				fillToolBackground(`${TOOL_RESULT_INDENT}${theme.fg("dim", fallback)}`, ctx.isError ? BG_ERROR : undefined),
+				fillToolBody(`${TOOL_RESULT_INDENT}${theme.fg("dim", fallback)}`, ctx.isError ? BG_ERROR : undefined),
 			);
 			return text;
 		},

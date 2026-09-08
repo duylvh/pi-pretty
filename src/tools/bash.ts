@@ -10,7 +10,7 @@ import {
 	inferBashExitCode,
 	stripBashExitStatusLine,
 } from "../helpers.js";
-import { fillToolBackground, renderToolDuration, renderToolError } from "../render.js";
+import { fillToolBackground, fillToolBody, renderToolDuration, renderToolError } from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { BashDetails, ComponentLike, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { type RejectedExecutionMetrics, wrapExecuteWithMetrics } from "./metrics.js";
@@ -96,7 +96,7 @@ export function registerBashTool(
 						: rawCmd;
 			const commandLabel = theme.fg(ctx.isError ? "error" : "toolTitle", theme.bold(`$ ${cmd}`));
 			text.setText(
-				fillToolBackground(`${TOOL_RESULT_INDENT}${commandLabel}${t}`, undefined, ctx.expanded ? undefined : tw),
+				fillToolBackground(`\n${TOOL_RESULT_INDENT}${commandLabel}${t}\n`, undefined, ctx.expanded ? undefined : tw),
 			);
 			return text;
 		},
@@ -140,11 +140,11 @@ export function registerBashTool(
 				const rw = termWidth();
 
 				const renderFn = (w: number) => {
-					if (!ctx.expanded) return fillToolBackground(header, undefined, w);
-					if (!output.trim()) return fillToolBackground(header, undefined, w);
+					if (!ctx.expanded) return fillToolBody(header, undefined, w);
+					if (!output.trim()) return fillToolBody(header, undefined, w);
 					const show = output.split("\n");
 					const out = [header, "", ...show.map((line: string) => `${TOOL_RESULT_INDENT}${line}`)];
-					return fillToolBackground(out.join("\n"), undefined, w);
+					return fillToolBody(out.join("\n"), undefined, w);
 				};
 
 				text.setText(renderFn(rw));
@@ -171,7 +171,7 @@ export function registerBashTool(
 			}
 			const fc = displayResult.content?.[0];
 			text.setText(
-				fillToolBackground(
+				fillToolBody(
 					`${TOOL_RESULT_INDENT}${theme.fg("dim", fc && "text" in fc ? String(fc.text).slice(0, 120) : "done")}`,
 				),
 			);

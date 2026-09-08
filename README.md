@@ -5,12 +5,12 @@
 
 A [pi](https://pi.dev) extension that upgrades built-in tool output in the terminal and includes built-in FFF-powered search for `find`/`grep`.
 
-Tool **result bodies** start **collapsed** (header + line count). Use Pi **Ctrl+O** (`app.tools.expand`) on a tool block to show full output; **Ctrl+Shift+O** expands all. See [Pi keybindings](https://pi.dev/docs/latest/keybindings).
+Tool **result bodies** start **collapsed** (header + line count) and retain a blank row below their output. Use Pi **Ctrl+O** (`app.tools.expand`) on a tool block to show full output; **Ctrl+Shift+O** expands all. See [Pi keybindings](https://pi.dev/docs/latest/keybindings).
 
 It currently enhances:
 
-- **user messages**: a `❯` prompt icon before each message, using the message text color
-- **`read`**: syntax-highlighted text previews with line numbers, plus inline image rendering when the terminal supports it
+- **user messages**: a `❯` prompt icon using `userMessageText`; **live input** uses the `thinkingText` color for its icon
+- **`read`**: syntax-highlighted text previews with line numbers, `read docs` labels for Pi documentation reads, plus inline image rendering when the terminal supports it
 - **`bash`**: colored exit summary (`exit 0`/`exit 1`) with a preview body of command output
 - **`ls`**: Nerd Font file icons with tree-oriented rendering
 - **`find` / `grep`**: built-in FFF-backed search with frecency-aware results, plus grouped/highlighted rendering

@@ -1,5 +1,7 @@
+import { dirname, join } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import type { AgentToolResult, ExtensionAPI, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getReadmePath } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerReadTool } from "../src/tools/read.js";
@@ -70,12 +72,7 @@ function loadReadTool(content: string, renderContent?: (...args: any[]) => Promi
 	return tool;
 }
 
-async function renderSkill(
-	content: string,
-	expanded: boolean,
-	path = "/tmp/skills/directory-name/SKILL.md",
-	offset?: number,
-) {
+async function renderRead(content: string, expanded: boolean, path: string, offset?: number) {
 	const tool = loadReadTool(content);
 	const result = await tool.execute("t1", { path, offset }, undefined, undefined, {});
 	return tool.renderResult(result, {}, mockTheme, {
@@ -84,6 +81,15 @@ async function renderSkill(
 		state: {},
 		expanded,
 	});
+}
+
+async function renderSkill(
+	content: string,
+	expanded: boolean,
+	path = "/tmp/skills/directory-name/SKILL.md",
+	offset?: number,
+) {
+	return renderRead(content, expanded, path, offset);
 }
 
 const skillContent = `---
@@ -95,66 +101,104 @@ description: Test skill rendering.
 
 Follow the workflow.`;
 
-describe("read title adjacency (no blank row below the title)", () => {
+describe("read title spacing", () => {
 	const plainFile = "const a = 1;\nconst b = 2;\n";
 	// biome-ignore lint/suspicious/noControlCharactersInRegex: stripping SGR sequences from rendered output
 	const SGR = /[\u001b+\[[0-9;]*m/g;
 	const visible = (line: string): string => line.replace(SGR, "").trim();
 
-	it("collapsed: the info line sits directly below the read title", async () => {
+	it("collapsed: the read title has top and bottom padding", async () => {
 		const rendered = await renderSkill(plainFile, false, "/tmp/project/src/index.ts");
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const infoIdx = lines.findIndex((l) => l.includes("ctrl+o to expand"));
-		expect(titleIdx).toBe(0);
-		expect(infoIdx).toBe(titleIdx + 1);
-		expect(visible(lines.at(-1) ?? "")).not.toBe("");
+		expect(titleIdx).toBe(1);
+		expect(visible(lines[titleIdx - 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
+		expect(infoIdx).toBe(titleIdx + 2);
+		expect(visible(lines.at(-1) ?? "")).toBe("");
 	});
 
-	it("expanded: the rule line sits directly below the read title", async () => {
+	it("expanded: the read title has top and bottom padding", async () => {
 		const rendered = await renderSkill(plainFile, true, "/tmp/project/src/index.ts");
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const ruleIdx = lines.findIndex((l, i) => i > titleIdx && l.includes("─"));
-		expect(titleIdx).toBe(0);
-		expect(ruleIdx).toBe(titleIdx + 1);
-		expect(visible(lines.at(-1) ?? "")).not.toBe("");
+		expect(titleIdx).toBe(1);
+		expect(visible(lines[titleIdx - 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
+		expect(ruleIdx).toBe(titleIdx + 2);
+		expect(visible(lines.at(-1) ?? "")).toBe("");
 	});
 
-	it("collapsed skill header is the final row (no trailing blank)", async () => {
+	it("collapsed skill header has top and bottom padding", async () => {
 		const rendered = await renderSkill(skillContent, false);
 		const lines = rendered.getText().split("\n");
-		expect(lines).toHaveLength(1);
-		expect(visible(lines[0] ?? "")).toContain("[skill]");
+		expect(lines).toHaveLength(3);
+		expect(visible(lines[0] ?? "")).toBe("");
+		expect(visible(lines[1] ?? "")).toContain("[skill]");
+		expect(visible(lines[2] ?? "")).toBe("");
 	});
 
-	it("expanded skill: the divider sits directly below the skill header", async () => {
+	it("expanded skill: the divider follows the padded skill header", async () => {
 		const rendered = await renderSkill(skillContent, true);
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("[skill]"));
-		expect(titleIdx).toBe(0);
-		expect(visible(lines[titleIdx + 1] ?? "")).toContain("─");
-		expect(visible(lines.at(-1) ?? "")).not.toBe("");
+		expect(titleIdx).toBe(1);
+		expect(visible(lines[titleIdx - 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 2] ?? "")).toContain("─");
+		expect(visible(lines.at(-1) ?? "")).toBe("");
 	});
 
-	it("async highlight keeps the body directly below the plain-file title", async () => {
+	it("async highlight keeps the body below the padded plain-file title", async () => {
 		const rendered = await renderSkill(plainFile, true, "/tmp/project/src/index.ts");
 		await vi.waitFor(() => expect(rendered.getUpdateCount()).toBeGreaterThanOrEqual(2));
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("→ read"));
 		const bodyIdx = lines.findIndex((l, i) => i > titleIdx && l.includes("│"));
-		expect(titleIdx).toBe(0);
-		expect(bodyIdx).toBe(titleIdx + 1);
-		expect(visible(lines.at(-1) ?? "")).not.toBe("");
+		expect(titleIdx).toBe(1);
+		expect(visible(lines[titleIdx - 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
+		expect(bodyIdx).toBe(titleIdx + 2);
+		expect(visible(lines.at(-1) ?? "")).toBe("");
 	});
 
-	it("async highlight keeps the divider directly below the skill header", async () => {
+	it("async highlight keeps the divider below the padded skill header", async () => {
 		const rendered = await renderSkill(skillContent, true);
 		await vi.waitFor(() => expect(rendered.getUpdateCount()).toBeGreaterThanOrEqual(2));
 		const lines = rendered.getText().split("\n");
 		const titleIdx = lines.findIndex((l) => l.includes("[skill]"));
-		expect(titleIdx).toBeGreaterThanOrEqual(0);
-		expect(visible(lines[titleIdx + 1] ?? "")).toContain("─");
+		expect(titleIdx).toBe(1);
+		expect(visible(lines[titleIdx + 1] ?? "")).toBe("");
+		expect(visible(lines[titleIdx + 2] ?? "")).toContain("─");
+	});
+
+	it.each([
+		["README.md", join(dirname(getReadmePath()), "README.md")],
+		["docs", join(dirname(getReadmePath()), "docs", "tui.md")],
+		["examples", join(dirname(getReadmePath()), "examples", "extensions", "todo.ts")],
+	])("collapsed Pi %s reads use the docs label", async (_kind, path) => {
+		const rendered = await renderRead("# Pi docs", false, path);
+		const output = stripVTControlCharacters(rendered.getText());
+		const label = path.slice(dirname(getReadmePath()).length + 1).replaceAll("\\", "/");
+		expect(output).toContain("→ read docs");
+		expect(output).toContain(label);
+	});
+
+	it("expanded Pi docs reads retain the ordinary read title", async () => {
+		const path = join(dirname(getReadmePath()), "docs", "tui.md");
+		const rendered = await renderRead("# Pi docs", true, path);
+		const output = stripVTControlCharacters(rendered.getText());
+		expect(output).toContain("→ read");
+		expect(output).not.toContain("→ read docs");
+	});
+
+	it("does not label project docs as Pi docs", async () => {
+		const rendered = await renderRead("# Project docs", false, "/tmp/project/docs/tui.md");
+		const output = stripVTControlCharacters(rendered.getText());
+		expect(output).toContain("→ read");
+		expect(output).not.toContain("→ read docs");
 	});
 
 	it("invalidates once after highlighting without recursively re-rendering", async () => {

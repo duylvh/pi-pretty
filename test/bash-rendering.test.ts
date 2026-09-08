@@ -145,7 +145,7 @@ describe("bash renderCall expansion", () => {
 		process.stdout.columns = 100;
 	});
 
-	it("ends every tool header at the title row (no blank row below the title)", () => {
+	it("adds one blank row above and below every tool header", () => {
 		const previousEnabledTools = process.env.PRETTY_ENABLE_TOOLS;
 		const previousDisabledTools = process.env.PRETTY_DISABLE_TOOLS;
 		process.env.PRETTY_ENABLE_TOOLS = "ls";
@@ -179,8 +179,10 @@ describe("bash renderCall expansion", () => {
 				invalidate: () => {},
 			});
 			const lines = stripAnsi(rendered.getText()).split("\n");
-			expect(lines).toHaveLength(1);
-			expect(lines[0]?.trim(), name).not.toBe("");
+			expect(lines).toHaveLength(3);
+			expect(lines[0]?.trim(), name).toBe("");
+			expect(lines[1]?.trim(), name).not.toBe("");
+			expect(lines[2]?.trim(), name).toBe("");
 		}
 	});
 
@@ -289,7 +291,8 @@ describe("bash renderCall expansion", () => {
 			});
 
 			const lines = stripAnsi(rendered.getText()).split("\n");
-			expect(lines[0]).toMatch(/^ \$ false/);
+			expect(lines[0]?.trim()).toBe("");
+			expect(lines[1]).toMatch(/^ \$ false/);
 			expect(rendered.getText()).toContain("\x1b[31m");
 		});
 	});
@@ -312,7 +315,7 @@ describe("bash renderCall expansion", () => {
 			const collapsedLines = stripAnsi(collapsed.getText()).split("\n");
 			expect(collapsedLines[0]).toContain("3 lines · ctrl+o to expand");
 			expect(collapsedLines[0]).not.toContain("exit");
-			expect(collapsedLines.at(-1)?.trim()).not.toBe("");
+			expect(collapsedLines.at(-1)?.trim()).toBe("");
 			expect(collapsedLines.some((l) => l.includes("first error"))).toBe(false);
 
 			const expanded = bashTool.renderResult(
@@ -331,7 +334,7 @@ describe("bash renderCall expansion", () => {
 			expect(lines[1].trim()).toBe("");
 			expect(lines[2]).toMatch(/^ first error/);
 			expect(lines[4]).toMatch(/^ second error/);
-			expect(lines.at(-1)?.trim()).not.toBe("");
+			expect(lines.at(-1)?.trim()).toBe("");
 		});
 	});
 

@@ -4,10 +4,12 @@
 
 ### Added
 
-- User messages now render with a `❯` prompt icon using the message text color.
+- User messages render with a `❯` prompt icon using `userMessageText`; live input uses the `thinkingText` color for its icon.
 
 ### Fixed
 
+- Tool titles again have one blank row above and below them, and custom tool bodies now retain one blank row below their output. Host `edit`/`write` renderers remain unchanged.
+- Collapsed reads of Pi's `README.md`, `docs/`, and `examples/` paths now use the `read docs` label, matching Pi's default renderer.
 - The working shimmer now uses Pi's embedded working-status row at the top border of the input when supported, with the older above-editor widget retained as a compatibility fallback.
 - FFF no longer surfaces a startup error when Pi launches from the exact home directory or filesystem root. It now falls back to SDK-backed `find`/`grep`; home and root indexing require explicit opt-in via `pi-pretty.json`, environment variables, or CLI flags.
 - FFF initialization failures no longer duplicate the `FFF init failed:` prefix; unexpected failures are reported once as warnings.

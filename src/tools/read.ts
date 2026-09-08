@@ -1,7 +1,8 @@
 /* pi-pretty: read tool -- file reading with syntax highlighting and inline image support. */
 
-import { basename, dirname } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { getReadmePath } from "@earendil-works/pi-coding-agent";
 import {
 	BG_BASE,
 	BG_ERROR,
@@ -14,12 +15,23 @@ import {
 	termWidth,
 } from "../config.js";
 import { normalizeLineEndings, shortPath } from "../helpers.js";
-import { fillToolBackground, renderFileContent, renderToolError } from "../render.js";
+import { fillToolBackground, fillToolBody, renderFileContent, renderToolError } from "../render.js";
 import { resolveTextCtor } from "../tui-text.js";
 import type { ReadDetails, RenderCtxLike, SdkToolDef, TextContent, ThemeLike } from "../types.js";
 import { wrapExecuteWithMetrics } from "./metrics.js";
 
 type Result = AgentToolResult<Record<string, unknown>>;
+
+function getPiDocsLabel(filePath: string, cwd: string): string | undefined {
+	const packageRoot = dirname(getReadmePath());
+	const relativePath = relative(resolve(packageRoot), resolve(cwd, filePath));
+	if (relativePath === "" || relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
+		return undefined;
+	}
+
+	const label = relativePath.split(sep).join("/");
+	return label === "README.md" || label.startsWith("docs/") || label.startsWith("examples/") ? label : undefined;
+}
 
 function getSkillName(filePath: string, content: string): string | undefined {
 	if (basename(filePath) !== "SKILL.md") return undefined;
@@ -101,7 +113,7 @@ export function registerReadTool(
 
 			const path = String(args.path ?? "");
 			const label = theme.fg("error", theme.bold("→ read"));
-			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${label} ${theme.fg("toolTitle", path)}`, BG_ERROR));
+			text.setText(fillToolBackground(`\n${TOOL_RESULT_INDENT}${label} ${theme.fg("toolTitle", path)}\n`, BG_ERROR));
 			return text;
 		},
 
@@ -112,7 +124,7 @@ export function registerReadTool(
 			const text = ctx.lastComponent ?? new TC("", 0, 0);
 
 			if (ctx.isError) {
-				text.setText(fillToolBackground(renderToolError(getText(result) || "Error", theme), BG_ERROR));
+				text.setText(renderToolError(getText(result) || "Error", theme));
 				return text;
 			}
 
@@ -123,7 +135,7 @@ export function registerReadTool(
 			// or unsupported by the terminal.
 			if (d?._type === "readImage") {
 				const note = getText(result);
-				text.setText(note ? fillToolBackground(note, BG_BASE) : "");
+				text.setText(note ? fillToolBody(note, BG_BASE) : "");
 				return text;
 			}
 
@@ -139,12 +151,16 @@ export function registerReadTool(
 				if (!ctx.expanded) {
 					if (skillName) {
 						const header = renderSkillHeader(skillName, false, theme);
-						text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${header}`, BG_BASE));
+						text.setText(fillToolBody(`\n${TOOL_RESULT_INDENT}${header}\n`, BG_BASE));
 						return text;
 					}
+					const docsLabel = getPiDocsLabel(filePath, cwd);
+					const title = docsLabel
+						? `${theme.fg("toolTitle", theme.bold("→ read docs"))} ${theme.fg("toolTitle", docsLabel)}`
+						: `${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}`;
 					text.setText(
-						fillToolBackground(
-							`${TOOL_RESULT_INDENT}${theme.fg("toolTitle", theme.bold("→ read"))} ${theme.fg("toolTitle", p2)}${theme.fg("dim", off2)}\n${TOOL_RESULT_INDENT}${FG_DIM}${total} lines — ctrl+o to expand${RST}`,
+						fillToolBody(
+							`\n${TOOL_RESULT_INDENT}${title}${theme.fg("dim", off2)}\n\n${TOOL_RESULT_INDENT}${FG_DIM}${total} lines — ctrl+o to expand${RST}`,
 							BG_BASE,
 						),
 					);
@@ -170,11 +186,11 @@ export function registerReadTool(
 				const cachedHighlight = getCachedReadHighlight(ctx, highlightRequest);
 				if (cachedHighlight !== undefined) {
 					const highlighted = buildHighlightedRead(cachedHighlight, header, skillName, offset, nw, tw);
-					text.setText(fillToolBackground(highlighted, BG_BASE));
+					text.setText(fillToolBody(highlighted, BG_BASE));
 					return text;
 				}
 
-				const out: string[] = [`${TOOL_RESULT_INDENT}${header}`];
+				const out: string[] = ["", `${TOOL_RESULT_INDENT}${header}`, ""];
 				out.push(`${TOOL_RESULT_INDENT}${FG_RULE}${"─".repeat(tw - 1)}${RST}`);
 				for (let i = 0; i < show.length; i++) {
 					const ln = offset + i + 1;
@@ -189,7 +205,7 @@ export function registerReadTool(
 					out.push(`${TOOL_RESULT_INDENT}${FG_DIM}… ${total - maxShow} more lines (${total} total)${RST}`);
 				}
 				const rendered = out.join("\n");
-				text.setText(fillToolBackground(rendered, BG_BASE));
+				text.setText(fillToolBody(rendered, BG_BASE));
 
 				// Async syntax highlighting via Shiki. The component is reused across
 				// expansion changes, so stale work must not restore an older view.
@@ -198,7 +214,7 @@ export function registerReadTool(
 						if (!isCurrentReadRender(ctx, renderToken)) return;
 						setCachedReadHighlight(ctx, highlightRequest, hl);
 						const highlighted = buildHighlightedRead(hl, header, skillName, offset, nw, tw);
-						text.setText(fillToolBackground(highlighted, BG_BASE));
+						text.setText(fillToolBody(highlighted, BG_BASE));
 						ctx.invalidate?.();
 					})
 					.catch(() => {});
@@ -208,7 +224,7 @@ export function registerReadTool(
 
 			const fc = result.content?.[0];
 			text.setText(
-				fillToolBackground(
+				fillToolBody(
 					`${TOOL_RESULT_INDENT}${theme.fg("dim", fc && "text" in fc ? String(fc.text).slice(0, 120) : "done")}`,
 					BG_BASE,
 				),
@@ -282,7 +298,7 @@ function buildHighlightedRead(
 		})
 		.join("\n");
 	const divider = skillName ? `${TOOL_RESULT_INDENT}${FG_RULE}${"─".repeat(Math.max(1, tw - 1))}${RST}\n` : "";
-	return `${TOOL_RESULT_INDENT}${header}\n${divider}${padded}`;
+	return `\n${TOOL_RESULT_INDENT}${header}\n\n${divider}${padded}`;
 }
 
 function getText(result: Result): string {

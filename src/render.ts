@@ -222,6 +222,11 @@ export function fillToolBackground(text: string, bg = BG_BASE, width?: number): 
 		.join("\n");
 }
 
+/** Add exactly the missing terminal row after a rendered tool body. */
+export function fillToolBody(text: string, bg = BG_BASE, width?: number): string {
+	return fillToolBackground(text.endsWith("\n") ? text : `${text}\n`, bg, width);
+}
+
 function lnum(n: number, w: number): string {
 	const v = String(n);
 	return `${FG_LNUM}${" ".repeat(Math.max(0, w - v.length))}${v}${RST}`;
@@ -253,7 +258,7 @@ export function renderToolError(error: string, theme: ThemeLike): string {
 	const body = compactErrorLines(error)
 		.map((line) => `${TOOL_RESULT_INDENT}${line ? theme.fg("error", line) : ""}`)
 		.join("\n");
-	return fillToolBackground(body, BG_ERROR);
+	return fillToolBody(body, BG_ERROR);
 }
 
 // ---------------------------------------------------------------------------
@@ -448,14 +453,14 @@ export function makeRenderResult() {
 			const more = lines.length > maxShow ? `\n${FG_DIM}... ${lines.length - maxShow} more lines${RST}` : "";
 			const metrics = renderToolMetrics(result);
 			text.setText(
-				fillToolBackground(
+				fillToolBody(
 					`${TOOL_RESULT_INDENT}${preview}${more}${metrics ? `\n${TOOL_RESULT_INDENT}${metrics}` : ""}`,
 					undefined,
 					renderWidth,
 				),
 			);
 		} else {
-			text.setText(fillToolBackground(`${TOOL_RESULT_INDENT}${theme.fg("dim", "(no text output)")}`));
+			text.setText(fillToolBody(`${TOOL_RESULT_INDENT}${theme.fg("dim", "(no text output)")}`));
 		}
 		return text;
 	};

@@ -3,7 +3,7 @@
  */
 
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
-import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
+import type { AgentToolResult, CustomEditor } from "@earendil-works/pi-coding-agent";
 import type { FffInitOptions } from "./fff.js";
 
 // ---------------------------------------------------------------------------
@@ -186,6 +186,8 @@ export interface CursorStore {
 // DI
 // ---------------------------------------------------------------------------
 
+export type CustomEditorConstructor = new (...args: ConstructorParameters<typeof CustomEditor>) => CustomEditor;
+
 export interface PiPrettyDeps {
 	sdk?: SdkTools;
 	TextComponent?: new (text?: string, x?: number, y?: number) => ComponentLike;
@@ -194,4 +196,6 @@ export interface PiPrettyDeps {
 	 * to the package export. Injectable so tests can verify against the exact
 	 * class instance they construct rows from. */
 	assistantMessageComponent?: unknown;
+	/** Host CustomEditor class for the live prompt icon; defaults to the package export. */
+	customEditorClass?: CustomEditorConstructor;
 }
