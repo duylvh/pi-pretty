@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * omp-style shimmer working indicator (widget takeover).
+ * omp-style shimmer working indicator.
  *
- * The host Loader hardcodes paddingX=1, so flush-left rendering requires
- * owning the row: setWorkingVisible(false) + setWidget(factory) with our own
- * interval-driven component.
+ * The install tests cover Pi's embedded working-status API and the legacy
+ * zero-padding widget fallback used by older hosts.
  *
  * Seam: pure frame builder + settings/palette resolvers + WorkingWidget +
- * installWorkingIndicator against a structural ui fake.
+ * installWorkingIndicator against structural UI fakes.
  */
 
 const L = "\x1b[30m";
@@ -433,6 +432,53 @@ describe("resolvePaletteAnsi", () => {
 });
 
 describe("installWorkingIndicator", () => {
+	it("uses pi's embedded working status when the host provides it", async () => {
+		const workingIndicators: Array<{ frames?: string[]; intervalMs?: number } | undefined> = [];
+		const messages: Array<string | undefined> = [];
+		const visible: boolean[] = [];
+		const setWidget = vi.fn();
+		const ui = {
+			theme: {
+				fg: (name: string, text: string) => `<${name}>${text}</${name}>`,
+				getFgAnsi: (name: string) => `\x1b[38;5;${name.length}m`,
+			},
+			setWorkingIndicator: (options?: { frames?: string[]; intervalMs?: number }) => {
+				workingIndicators.push(options);
+			},
+			setWorkingMessage: (message?: string) => {
+				messages.push(message);
+			},
+			setWorkingVisible: (value: boolean) => {
+				visible.push(value);
+			},
+			setWidget,
+		};
+		const { installWorkingIndicator, WORKING_INDICATOR_DEFAULTS } =
+			await freshModule<typeof import("../src/working-indicator.js")>("../src/working-indicator.js");
+		const controller = await installWorkingIndicator(ui, WORKING_INDICATOR_DEFAULTS, {
+			getKeybindings: () => ({ getKeys: () => ["ctrl+esc"] }),
+		});
+
+		expect(workingIndicators).toHaveLength(1);
+		expect(workingIndicators[0]?.frames?.length).toBeGreaterThan(1);
+		expect(workingIndicators[0]?.intervalMs).toBe(33);
+		expect(messages[0]).toBe("");
+		expect(setWidget).not.toHaveBeenCalled();
+		expect(visible).toEqual([false]);
+
+		controller.start();
+		controller.setStats(" (↓ 42 tokens)");
+		controller.stop();
+		expect(visible).toEqual([false, true, false]);
+		expect(messages.at(-1)).toBe("\x1b[38;2;80;80;80m(↓ 42 tokens)\x1b[39m");
+
+		controller.start();
+		controller.dispose();
+		expect(visible).toEqual([false, true, false, true, false]);
+		expect(workingIndicators.at(-1)).toBeUndefined();
+		expect(messages.at(-1)).toBeUndefined();
+	});
+
 	function makeUi() {
 		const visible: boolean[] = [];
 		const widgets: Array<{

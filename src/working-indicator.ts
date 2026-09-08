@@ -1,15 +1,13 @@
 /**
- * omp-style shimmer working indicator (widget takeover).
+ * omp-style shimmer working indicator.
  *
  * Ports the shimmer sweep from oh-my-pi's `modes/theme/shimmer.ts`: the sweep
  * is discretized into one pre-rendered frame per band position, cycled at
  * 1000/30 ms so the band travels 30 cells/second — omp's exact speed.
  *
- * Why a widget: the host `Loader` extends `Text` with a hardcoded paddingX=1,
- * and `setWorkingIndicator({ frames })` cannot change host component layout.
- * To render the row flush-left we hide the host loader
- * (`setWorkingVisible(false)`) and install our own zero-padding component via
- * `setWidget(..., "aboveEditor")`, animating it with a 33ms interval.
+ * On hosts that expose Pi's embedded working-status API, frames are delegated
+ * to the host so the row is rendered in the editor's top border. Older hosts
+ * without that API use the zero-padding widget fallback above the editor.
  *
  * Frame layout: `<dim spinner> <shimmer text> <dim interrupt hint>`, one full
  * sweep per phrase — `texts` rotates through phrases chapter by chapter with
@@ -391,8 +389,8 @@ export interface WidgetTuiLike {
 
 /**
  * Zero-padding working-row component. The host renders whatever `render()`
- * returns with no margins, so the row sits flush-left — the thing the frames
- * API could not do.
+ * returns with no margins, so the legacy widget row sits flush-left without
+ * relying on the host loader's padding.
  */
 export class WorkingWidget {
 	#frames: string[] = [];
@@ -740,8 +738,17 @@ export interface WorkingThemeLike {
 	getFgAnsi?: (name: "dim" | "muted" | "accent" | "thinkingText") => string;
 }
 
+export interface WorkingStatusOptionsLike {
+	frames?: string[];
+	intervalMs?: number;
+}
+
 export interface WorkingUiLike {
 	theme?: WorkingThemeLike;
+	/** Hosts with Pi's embedded working-status API render this in the editor border. */
+	setWorkingIndicator?: (options?: WorkingStatusOptionsLike) => void;
+	/** Set the message appended after a custom native frame. */
+	setWorkingMessage?: (message?: string) => void;
 	setWorkingVisible(visible: boolean): void;
 	setWidget(
 		key: string,
@@ -759,11 +766,11 @@ export interface WorkingIndicatorController {
 	start(): void;
 	/** Streaming ended — hide the row and pause the animation. */
 	stop(): void;
-	/** Remove the widget and stop the animation. */
+	/** Remove the indicator and stop the animation. */
 	dispose(): void;
 	/** Update the dim right-side status segment (live token count). */
 	setStats(text: string | undefined): void;
-	/** Request a host render via the widget's TUI handle. */
+	/** Request a host render for consumers that drive another animated label. */
 	requestRender(): void;
 	/** Pre-rendered frames (exposed for diagnostics). */
 	readonly frames: readonly string[];
@@ -811,12 +818,13 @@ async function resolveHint(
 }
 
 /**
- * Take over pi's working row with our own flush-left shimmer widget.
+ * Install the custom working shimmer and return its lifecycle controller.
  *
- * Installs a zero-padding component above the editor and hides the host
- * loader; returns a controller the host lifecycle drives (`start` on
- * agent_start, `stop` on agent_end). No-op (host defaults untouched) when
- * disabled or the phrase list is empty.
+ * Current Pi hosts receive the pre-rendered frames through the embedded
+ * working-status API, which places them in the editor's top border. Older
+ * hosts use a zero-padding widget above the editor. The host lifecycle drives
+ * the controller (`start` on agent_start, `stop` on agent_end); disabled or
+ * empty phrase settings leave host defaults untouched.
  */
 export async function installWorkingIndicator(
 	ui: WorkingUiLike,
@@ -857,10 +865,68 @@ export async function installWorkingIndicator(
 	});
 	if (frames.length === 0) return noopController;
 
+	const setWorkingIndicator = ui.setWorkingIndicator;
+	const setWorkingMessage = ui.setWorkingMessage;
+	if (typeof setWorkingIndicator === "function" && typeof setWorkingMessage === "function") {
+		let stats: string | undefined;
+		let started = false;
+		let disposed = false;
+		const nativeMessage = (): string => (stats ? `${FG_DIM}${stats.trimStart()}${RESET_FG}` : "");
+		const updateNativeMessage = (): void => {
+			setWorkingMessage.call(ui, nativeMessage());
+		};
+
+		try {
+			setWorkingIndicator.call(ui, { frames, intervalMs });
+			// Keep the native status row hidden until the extension lifecycle starts it.
+			// An empty message is intentional: all visible content lives in our frames.
+			updateNativeMessage();
+			ui.setWorkingVisible(false);
+		} catch (error: unknown) {
+			try {
+				setWorkingIndicator.call(ui);
+				setWorkingMessage.call(ui);
+			} catch {
+				// Best-effort rollback; the caller still restores host visibility.
+			}
+			throw error;
+		}
+		return {
+			start: () => {
+				if (disposed || started) return;
+				started = true;
+				updateNativeMessage();
+				ui.setWorkingVisible(true);
+			},
+			stop: () => {
+				if (!started) return;
+				started = false;
+				ui.setWorkingVisible(false);
+			},
+			dispose: () => {
+				if (disposed) return;
+				if (started) {
+					started = false;
+					ui.setWorkingVisible(false);
+				}
+				disposed = true;
+				setWorkingIndicator.call(ui);
+				setWorkingMessage.call(ui);
+			},
+			setStats: (text: string | undefined) => {
+				stats = text || undefined;
+				updateNativeMessage();
+			},
+			requestRender: () => updateNativeMessage(),
+			frames,
+		};
+	}
+
 	const widget = new WorkingWidget();
 	widget.setFrames(frames, intervalMs);
 	// Widget first, visibility second: if setWidget throws (older host without
-	// the API) the host loader was never hidden and pi's default remains.
+	// the native working-status API) the host loader was never hidden and pi's
+	// default remains.
 	ui.setWidget(
 		WIDGET_KEY,
 		(tui) => {

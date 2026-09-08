@@ -2,8 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- User messages now render with a `❯` prompt icon using the message text color.
+
 ### Fixed
 
+- The working shimmer now uses Pi's embedded working-status row at the top border of the input when supported, with the older above-editor widget retained as a compatibility fallback.
 - FFF no longer surfaces a startup error when Pi launches from the exact home directory or filesystem root. It now falls back to SDK-backed `find`/`grep`; home and root indexing require explicit opt-in via `pi-pretty.json`, environment variables, or CLI flags.
 - FFF initialization failures no longer duplicate the `FFF init failed:` prefix; unexpected failures are reported once as warnings.
 

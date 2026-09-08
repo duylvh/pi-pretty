@@ -56,6 +56,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_DISABLED_TOOLS = new Set(["ls"]);
+const USER_MESSAGE_ICON = "❯";
 
 function envTools(name: "PRETTY_DISABLE_TOOLS" | "PRETTY_ENABLE_TOOLS"): Set<string> {
 	return new Set(normalizeToolList((process.env[name] ?? "").split(",")));
@@ -70,6 +71,10 @@ export type { PiPrettyDeps };
 export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrettyDeps): Promise<void> {
 	const config = loadConfig();
 	applyConfig(config);
+	pi.registerMarkdownTransformer?.((markdown, context) => {
+		if (context.messageType !== "user" || markdown.trim() === "") return markdown;
+		return ` ${USER_MESSAGE_ICON} ${markdown}`;
+	});
 	pi.registerFlag?.("pretty-fff-home-scan", {
 		description: "Allow FFF to index the home directory when Pi starts there",
 		type: "boolean",
@@ -240,8 +245,8 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 		}
 	};
 
-	// (Re-)install the widget: new session, reload, or session rename (the
-	// accent tint tracks the name, omp-style). Preserves streaming state so a
+	// (Re-)install the working indicator: new session, reload, or session rename
+	// (the accent tint tracks the name, omp-style). Preserves streaming state so a
 	// mid-stream rename does not drop the row.
 	const installIndicator = async (ctx: ExtensionContext): Promise<void> => {
 		workingController?.dispose();
@@ -320,7 +325,7 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 		if (workingSettings.enabled) await installIndicator(ctx);
 	});
 
-	// Drive the widget with the streaming lifecycle (host loader is hidden).
+	// Drive the working indicator with the streaming lifecycle (the host row is hidden until agent_start).
 	pi.on("agent_start", async (_event: unknown, ctx: ExtensionContext) => {
 		if (ctx.mode !== "tui") return;
 		workingStreaming = true;
@@ -414,8 +419,8 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 						return;
 					}
 					thinkingTimer?.tick();
-					// The label has no widget of its own — reuse the working widget's
-					// TUI handle so the frame lands even when deltas pause mid-thinking.
+					// The label has no widget of its own — ask the working indicator to
+					// request a host render even when deltas pause mid-thinking.
 					workingController?.requestRender();
 				} catch (error: unknown) {
 					// A throwing host call inside our timer would crash pi (uncaught in
@@ -469,7 +474,7 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 	});
 
 	pi.on("session_shutdown", async () => {
-		// Tear down the widget animation; pi re-runs session_start (and our
+		// Tear down the indicator animation; pi re-runs session_start (and our
 		// install) after resume or session switching.
 		workingController?.dispose();
 		workingController = undefined;

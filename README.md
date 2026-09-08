@@ -9,11 +9,12 @@ Tool **result bodies** start **collapsed** (header + line count). Use Pi **Ctrl+
 
 It currently enhances:
 
+- **user messages**: a `❯` prompt icon before each message, using the message text color
 - **`read`**: syntax-highlighted text previews with line numbers, plus inline image rendering when the terminal supports it
 - **`bash`**: colored exit summary (`exit 0`/`exit 1`) with a preview body of command output
 - **`ls`**: Nerd Font file icons with tree-oriented rendering
 - **`find` / `grep`**: built-in FFF-backed search with frecency-aware results, plus grouped/highlighted rendering
-- **working indicator**: an [oh-my-pi](https://github.com/can1357/oh-my-pi)-style shimmer sweep over the streaming `Working…` row — flush-left, rotating phrases, per-session accent tint (see [Working indicator](#working-indicator-shimmer))
+- **working indicator**: an [oh-my-pi](https://github.com/can1357/oh-my-pi)-style shimmer sweep in the input's top-border `Working…` row — flush-left, rotating phrases, per-session accent tint (see [Working indicator](#working-indicator-shimmer))
 - **thinking label**: the hidden-thinking `Thinking...` label gets the same shimmer treatment (see [Thinking label](#thinking-label-shimmer))
 
 > Companion to [@heyhuynhgiabuu/pi-diff](https://github.com/buddingnewinsights/pi-diff) for `write`/`edit` diff rendering.
@@ -195,9 +196,9 @@ Place a JSON file alongside Pi's `settings.json` to customize pi-pretty. Every o
 While the agent streams, pi-pretty replaces pi's static `Working...` row with an
 [oh-my-pi](https://github.com/can1357/oh-my-pi)-style shimmer: a bright accent band sweeps across the
 text at 30 cells/second over a dim braille spinner, followed by the interrupt hint, rendered
-**flush-left**. Pi's own loader row carries a built-in 1-column indent that the extension API cannot
-change, so pi-pretty hides it (`setWorkingVisible(false)`) and draws the row with its own zero-padding
-widget, animated above the editor while the agent runs. Mode `kitt` swaps the sweep for a
+**flush-left** in Pi's embedded working-status row at the top border of the input. On hosts that
+provide Pi's embedded working-status API, pi-pretty supplies its custom frames to that row; older
+hosts fall back to a zero-padding widget above the editor. Mode `kitt` swaps the sweep for a
 ping-ponging scanner head with a decay trail; `static` renders a single unanimated frame. Tier
 colors resolve `#rrggbb` hex first, then the active pi theme color name, then built-in fallbacks.
 Set `workingIndicator.enabled: false` (or `PRETTY_WORKING_INDICATOR=off`) to restore pi's default
