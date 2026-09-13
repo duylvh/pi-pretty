@@ -33,6 +33,7 @@ export function registerLsTool(
 		label: "List",
 		description: sdkTool.description ?? "List directory contents",
 		parameters: sdkTool.parameters,
+		promptSnippet: sdkTool.promptSnippet,
 		renderShell: "self",
 
 		execute: wrapExecuteWithMetrics(async (tid, params, sig, _upd, ctx: ExtensionContext) => {

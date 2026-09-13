@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import piPrettyExtension from "../src/index.js";
 import { registerBashTool } from "../src/tools/bash.js";
+import type { SdkToolDef } from "../src/types.js";
 
 class MockText {
 	private text = "";
@@ -83,6 +84,50 @@ function loadTools() {
 function loadBashTool() {
 	return loadTools().get("bash");
 }
+
+/** Register the bash tool with a mock SDK definition and return the registered tool. */
+function registerBashToolWith(sdkTool: SdkToolDef) {
+	const registerTool = vi.fn();
+	registerBashTool({ registerTool } as any, process.cwd(), undefined, sdkTool, MockText);
+	return registerTool.mock.calls[0]?.[0];
+}
+
+describe("bash ripgrep guidance", () => {
+	it("merges the host guidelines with the ripgrep guidance", () => {
+		const tool = registerBashToolWith({
+			description: "Execute a bash command.",
+			parameters: {},
+			promptGuidelines: ["You can inspect PI_* environment variables for current model and session details."],
+			constrainedSampling: { type: "json_schema", strict: "prefer" },
+			execute: vi.fn(),
+		});
+		const guidelines = (tool.promptGuidelines as string[]).join("\n");
+
+		expect(tool.promptGuidelines[0]).toBe(
+			"You can inspect PI_* environment variables for current model and session details.",
+		);
+		expect(tool.constrainedSampling).toEqual({ type: "json_schema", strict: "prefer" });
+		expect(tool.promptSnippet).toContain("rg -n");
+		expect(tool.description).toContain("rg -n");
+		expect(guidelines).toContain("`--hidden`");
+		expect(guidelines).toContain("`--no-ignore`");
+		expect(guidelines).toContain("`-u` = `--no-ignore`");
+		expect(guidelines).toContain("`-uu` adds hidden");
+		expect(guidelines).toContain("rg -n 'foo|bar'");
+		expect(guidelines).toContain("`\\|` is a literal pipe");
+		expect(guidelines).toContain("`-F` for literal text");
+		expect(guidelines).toContain("`-l` lists files only");
+		expect(guidelines).toContain("`-m N` caps matches per file");
+		expect(guidelines).not.toContain("respects .gitignore by default");
+	});
+
+	it("registers the ripgrep guidance when the SDK tool provides none", () => {
+		const tool = registerBashToolWith({ description: "Execute a bash command.", parameters: {}, execute: vi.fn() });
+		const guidelines = tool.promptGuidelines as string[];
+		expect(guidelines).toHaveLength(3);
+		expect(guidelines[0]).toContain("rg skips .gitignored and hidden files by default");
+	});
+});
 
 describe("bash execution", () => {
 	it("preserves rejected execution metrics for error rendering", async () => {

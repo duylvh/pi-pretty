@@ -2,7 +2,7 @@
  * pi-pretty shared types.
  */
 
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ConstrainedSamplingConfig, ImageContent, TextContent } from "@earendil-works/pi-ai";
 import type { AgentToolResult, CustomEditor } from "@earendil-works/pi-coding-agent";
 import type { FffInitOptions } from "./fff.js";
 
@@ -136,6 +136,9 @@ export interface SdkToolDef {
 	description?: string;
 	label?: string;
 	parameters?: unknown;
+	promptSnippet?: string;
+	promptGuidelines?: string[];
+	constrainedSampling?: false | ConstrainedSamplingConfig;
 	execute: (...args: any[]) => Promise<AgentToolResult<any>>;
 }
 

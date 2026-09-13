@@ -76,6 +76,9 @@ export function registerReadTool(
 		label: "Read",
 		description: sdkTool.description ?? "Read file contents",
 		parameters: sdkTool.parameters,
+		promptSnippet: sdkTool.promptSnippet,
+		promptGuidelines: sdkTool.promptGuidelines,
+		constrainedSampling: sdkTool.constrainedSampling,
 		renderShell: "self",
 
 		execute: wrapExecuteWithMetrics(async (tid, params, sig, _upd, ctx: ExtensionContext) => {

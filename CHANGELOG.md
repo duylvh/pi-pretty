@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Corrected the `bash` tool's ripgrep guidance: `-u` is `--no-ignore` only (hidden files need `--hidden`/`-uu`), alternation patterns must be quoted, and Pi's built-in bash prompt guidelines are now merged instead of replaced.
+- The `read` tool now preserves Pi's built-in prompt guideline, tool-list snippet, and constrained-sampling hint instead of dropping them when pi-pretty re-registers it, and `ls` keeps its tool-list snippet.
+
 ## [0.6.27] - 2026-09-09
 
 ### Added

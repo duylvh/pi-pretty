@@ -84,10 +84,14 @@ export function registerBashTool(
 			: "Execute shell commands. For text search: `rg -n`.",
 		promptSnippet: "Execute commands via bash. For text search: `rg -n`.",
 		promptGuidelines: [
-			"For text search: `rg -n`. If no results, try `rg -u` (respects .gitignore by default).",
-			"In rg: | means alternation, \\| means literal pipe. Opposite of GNU grep. Never use \\| for alternation.",
+			// Re-registering by name drops the host's built-in bash guidelines; keep them.
+			...(sdkTool.promptGuidelines ?? []),
+			"rg skips .gitignored and hidden files by default. On no results use `--hidden` for dotfiles (add `-g '!.git'`), `--no-ignore` for ignored files, or name the path directly; `-u` = `--no-ignore`, `-uu` adds hidden.",
+			"Quote rg patterns: `rg -n 'foo|bar'`. `|` is alternation, `\\|` is a literal pipe (unlike GNU grep); use `-F` for literal text.",
+			"Keep output small: `-l` lists files only, `-m N` caps matches per file.",
 		],
 		parameters: sdkTool.parameters,
+		constrainedSampling: sdkTool.constrainedSampling,
 		renderShell: "self",
 
 		execute: wrapExecuteWithMetrics(async (tid, params, sig, upd, ctx: ExtensionContext) => {
