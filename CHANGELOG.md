@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.29] - 2026-09-14
+
+### Fixed
+
+- Regenerated `bun.lock`, which had drifted: it declared the `^0.85.0` pi toolchain without re-resolving, so it still pinned the 0.82.1 packages and `bun install --frozen-lockfile` failed. Bun now resolves the pi toolchain to 0.85.1 with `undici` 8.9.0 (fixes GHSA-4cwx-7wf7-3272 / CVE-2026-13697 plus the other advisories in the stale tree), `@ff-labs/fff-node` 0.10.6, and `@shikijs/cli` 4.4.3; `bun audit` reports no vulnerabilities.
+
 ## [0.6.28] - 2026-09-13
 
 ### Fixed
