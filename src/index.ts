@@ -30,7 +30,6 @@ import {
 	resolveToolSets,
 } from "./config.js";
 import { type FffInitOptions, type FffService, getSharedFffService, isFffRestrictedBasePathError } from "./fff.js";
-import { createPromptEditorClass } from "./prompt-editor.js";
 import { registerBashTool } from "./tools/bash.js";
 import { registerFindTool } from "./tools/find.js";
 import { registerGrepTool } from "./tools/grep.js";
@@ -57,11 +56,6 @@ import {
 
 const DEFAULT_DISABLED_TOOLS = new Set(["ls"]);
 const USER_MESSAGE_ICON = "❯";
-type EditorFactory = Parameters<ExtensionContext["ui"]["setEditorComponent"]>[0];
-type EditorUiCompatibility = {
-	setEditorComponent?: (factory: EditorFactory) => void;
-	getEditorComponent?: () => EditorFactory;
-};
 
 function envTools(name: "PRETTY_DISABLE_TOOLS" | "PRETTY_ENABLE_TOOLS"): Set<string> {
 	return new Set(normalizeToolList((process.env[name] ?? "").split(",")));
@@ -204,25 +198,6 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 	let thinkingHiddenCheckedAt = 0;
 	let workingSessionName: string | undefined;
 	let workingStreaming = false;
-	let promptEditorInstalled = false;
-	let previousEditorFactory: EditorFactory;
-	const hostCustomEditor =
-		deps?.customEditorClass ??
-		(hostSdk as unknown as { CustomEditor?: PiPrettyDeps["customEditorClass"] }).CustomEditor;
-	const installPromptEditor = (ctx: ExtensionContext): void => {
-		if (ctx.mode !== "tui" || promptEditorInstalled || typeof hostCustomEditor !== "function") return;
-		const editorUi = ctx.ui as unknown as EditorUiCompatibility;
-		if (typeof editorUi.setEditorComponent !== "function") return;
-		previousEditorFactory = editorUi.getEditorComponent?.();
-		const PromptEditor = createPromptEditorClass(hostCustomEditor, (icon) => {
-			const theme = ctx.ui.theme;
-			return typeof theme.getThinkingBorderColor === "function"
-				? theme.getThinkingBorderColor(ctx.thinkingLevel ?? "off")(icon)
-				: theme.fg("thinkingText", icon);
-		});
-		editorUi.setEditorComponent((tui, theme, keybindings) => new PromptEditor(tui, theme, keybindings));
-		promptEditorInstalled = true;
-	};
 	let perRowLabels: PerRowThinkingLabels | undefined;
 	/** Accumulated thinking time per message timestamp — later runs in the same
 	 * message resume from this total instead of rewinding to zero. */
@@ -294,7 +269,6 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 
 	pi.on("session_start", async (_event: unknown, ctx: ExtensionContext) => {
 		if (ctx.mode === "tui") {
-			installPromptEditor(ctx);
 			ctx.ui.setToolsExpanded(false);
 			// Per-row hidden-thinking labels: intercept the host's label fan-out so
 			// each row keeps its own duration. Falls back to the global-label
@@ -487,15 +461,7 @@ export default async function piPrettyExtension(pi: ExtensionAPI, deps?: PiPrett
 		if (thinkingInterval || thinkingTimer) stopThinkingShimmer();
 	});
 
-	pi.on("session_shutdown", async (_event: unknown, ctx?: ExtensionContext) => {
-		if (promptEditorInstalled) {
-			if (ctx) {
-				const editorUi = ctx.ui as unknown as EditorUiCompatibility;
-				if (typeof editorUi.setEditorComponent === "function") editorUi.setEditorComponent(previousEditorFactory);
-			}
-			promptEditorInstalled = false;
-			previousEditorFactory = undefined;
-		}
+	pi.on("session_shutdown", async (_event: unknown) => {
 		// Tear down the indicator animation; pi re-runs session_start (and our
 		// install) after resume or session switching.
 		workingController?.dispose();
