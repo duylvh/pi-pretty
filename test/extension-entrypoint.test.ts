@@ -43,6 +43,7 @@ const ctx = {
   ui: {
     theme: { fg: (_, text) => text, getFgAnsi: () => '' },
     setToolsExpanded() {}, setWorkingVisible() {}, setWidget() {},
+    setEditorComponent() { throw new Error('pi-pretty must not replace the editor'); },
     setHiddenThinkingLabel(label) { for (const row of rows) row.setHiddenThinkingLabel(label); },
     notify(message) { if (!message.startsWith('FFF init failed:')) throw new Error(message); },
   },

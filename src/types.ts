@@ -199,6 +199,6 @@ export interface PiPrettyDeps {
 	 * to the package export. Injectable so tests can verify against the exact
 	 * class instance they construct rows from. */
 	assistantMessageComponent?: unknown;
-	/** Host CustomEditor class for the live prompt icon; defaults to the package export. */
+	/** @deprecated Retained for API compatibility and ignored. */
 	customEditorClass?: CustomEditorConstructor;
 }

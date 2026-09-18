@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- No longer replaces Pi's custom editor, preserving compatibility with extensions that own the editor slot.
+
 ## [0.6.29] - 2026-09-14
 
 ### Fixed
